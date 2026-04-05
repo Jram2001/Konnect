@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Digest — MongoDB Schema v3</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#111;--surface:#191919;--border:#2a2a2a;--border-h:#3a3a3a;--t1:#ccc;--t2:#888;--t3:#555;--green:#4a9;--red:#c66;--blue:#68b;--amber:#b96;--pink:#a68;--purple:#a8b;--mono:'JetBrains Mono',monospace}
+body{font-family:var(--mono);background:var(--bg);color:var(--t1);font-size:13px;line-height:1.5}
+.w{max-width:860px;margin:0 auto;padding:40px 24px 64px}
+header{margin-bottom:48px}
+header h1{font-size:18px;font-weight:500;margin-bottom:4px}
+header p{font-size:11px;color:var(--t3)}
+.section{margin-bottom:40px}
+.section-label{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:12px}
+.card:hover{border-color:var(--border-h)}
+.card-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.card-name{font-weight:500;font-size:13px}
+.card-tag{font-size:9px;padding:2px 6px;border-radius:3px;margin-left:auto}
+.row{display:flex;align-items:center;padding:6px 14px;border-bottom:1px solid #1f1f1f;font-size:12px}
+.row:last-child{border-bottom:none}
+.row:hover{background:#1e1e1e}
+.row.nest{padding-left:30px;color:var(--t2)}
+.fname{min-width:160px;color:var(--t1)}
+.ftype{min-width:80px;color:var(--t3);font-size:11px}
+.fbadges{margin-left:auto;display:flex;gap:3px}
+.fb{font-size:8px;padding:1px 5px;border-radius:2px;letter-spacing:0.03em}
+.fb-id{background:#1a2e24;color:var(--green)}
+.fb-ref{background:#1a2a3a;color:var(--blue)}
+.fb-uq{background:#2a2418;color:var(--amber)}
+.fb-ix{background:#1a1a2e;color:#88a}
+.fb-df{background:#1e1e1e;color:var(--t3)}
+.fb-em{background:#2a1a2a;color:var(--pink)}
+.fb-ar{background:#2a1a1e;color:var(--red)}
+.tog{padding:5px 14px;font-size:10px;color:var(--t3);cursor:pointer;user-select:none;display:flex;align-items:center;gap:4px}
+.tog:hover{color:var(--t2)}
+.tog .a{transition:transform 0.15s;display:inline-block;font-size:8px}
+.tog.open .a{transform:rotate(90deg)}
+.pre{display:none;margin:0 14px 10px;padding:10px 12px;background:#141414;border-radius:4px;font-size:10px;line-height:1.7;color:var(--t2);overflow-x:auto;white-space:pre;border:1px solid #1e1e1e}
+.pre .k{color:var(--green)}.pre .s{color:var(--amber)}.pre .n{color:var(--red)}.pre .b{color:var(--purple)}.pre .c{color:var(--t3);font-style:italic}
+.ref-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px}
+.ref{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:4px;font-size:11px}
+.ref:hover{border-color:var(--border-h)}
+.ref-t{font-size:9px;padding:2px 6px;border-radius:3px;flex-shrink:0}
+.ref-t.e{background:#2a1a2a;color:var(--pink)}
+.ref-t.r{background:#1a2a3a;color:var(--blue)}
+.ix-table{width:100%;border-collapse:collapse;font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.ix-table th{text-align:left;padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--t3);background:#1a1a1a;border-bottom:1px solid var(--border);font-weight:500}
+.ix-table td{padding:7px 14px;border-bottom:1px solid #1f1f1f}
+.ix-table tr:last-child td{border-bottom:none}
+.ix-table tr:hover td{background:#1e1e1e}
+.ix-table code{color:var(--green)}
+.note{padding:12px 14px;font-size:11px;color:var(--t2);line-height:1.6;border-left:2px solid var(--border);margin:8px 0 16px}
+footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--border);font-size:10px;color:var(--t3);text-align:center}
+@media(max-width:640px){.w{padding:24px 12px 48px}.ftype{display:none}.ref-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="w">
+
+<header>
+  <h1>daily digest — mongodb schema v3</h1>
+  <p>7 collections. entity_key resolution. manual macro groups. lean.</p>
+</header>
+
+<!-- USERS -->
+<div class="section">
+  <div class="section-label">users</div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">users</span><span class="card-tag" style="background:#1a2e24;color:var(--green)">embeds watchlist[]</span></div>
+    <div class="row"><span class="fname">_id</span><span class="ftype">ObjectId</span><span class="fbadges"><span class="fb fb-id">_id</span></span></div>
+    <div class="row"><span class="fname">email</span><span class="ftype">String</span><span class="fbadges"><span class="fb fb-uq">UNIQUE</span></span></div>
+    <div class="row"><span class="fname">is_active</span><span class="ftype">Boolean</span><span class="fbadges"><span class="fb fb-df">true</span></span></div>
+    <div class="row"><span class="fname">watchlist</span><span class="ftype">Array</span><span class="fbadges"><span class="fb fb-em">EMBED</span><span class="fb fb-ar">ARR</span></span></div>
+    <div class="row nest"><span class="fname">&#8627; entity_key</span><span class="ftype">String</span><span class="fbadges"><span class="fb fb-ix">IDX</span></span></div>
+    <div class="row nest"><span class="fname">&#8627; display_name</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">created_at</span><span class="ftype">Date</span><span class="fbadges"></span></div>
+    <div class="tog" onclick="tog(this)"><span class="a">&#9654;</span>sample</div>
+    <div class="pre">{
+  <span class="k">"email"</span>: <span class="s">"alex@example.com"</span>,
+  <span class="k">"is_active"</span>: <span class="b">true</span>,
+  <span class="k">"watchlist"</span>: [
+    { <span class="k">"entity_key"</span>: <span class="s">"tesla_company"</span>, <span class="k">"display_name"</span>: <span class="s">"Tesla"</span> },
+    { <span class="k">"entity_key"</span>: <span class="s">"anthropic_company"</span>, <span class="k">"display_name"</span>: <span class="s">"Anthropic"</span> }
+  ]
+}</div>
+  </div>
+</div>
+
+<!-- ENTITIES -->
+<div class="section">
+  <div class="section-label">entities</div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">entities</span><span class="card-tag" style="background:#2a2418;color:var(--amber)">canonical registry</span></div>
+    <div class="row"><span class="fname">_id</span><span class="ftype">ObjectId</span><span class="fbadges"><span class="fb fb-id">_id</span></span></div>
+    <div class="row"><span class="fname">entity_key</span><span class="ftype">String</span><span class="fbadges"><span class="fb fb-uq">UNIQUE</span></span></div>
+    <div class="row"><span class="fname">display_name</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">macro_group_keys</span><span class="ftype">Array&lt;String&gt;</span><span class="fbadges"><span class="fb fb-ix">IDX</span></span></div>
+    <div class="tog" onclick="tog(this)"><span class="a">&#9654;</span>sample</div>
+    <div class="pre">{
+  <span class="k">"entity_key"</span>: <span class="s">"tesla_company"</span>,
+  <span class="k">"display_name"</span>: <span class="s">"Tesla"</span>,
+  <span class="k">"macro_group_keys"</span>: [<span class="s">"ev_sector"</span>, <span class="s">"big_tech"</span>]
+}</div>
+  </div>
+  <div class="note">entity_key is AI-generated (e.g. "tesla_company" vs "nikola_tesla_person"). display_name is for humans. macro_group_keys assigned manually by admin.</div>
+</div>
+
+<!-- MACRO GROUPS -->
+<div class="section">
+  <div class="section-label">taxonomy</div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">macro_groups</span><span class="card-tag" style="background:#1a2a3a;color:var(--blue)">manual / seeded</span></div>
+    <div class="row"><span class="fname">_id</span><span class="ftype">ObjectId</span><span class="fbadges"><span class="fb fb-id">_id</span></span></div>
+    <div class="row"><span class="fname">group_key</span><span class="ftype">String</span><span class="fbadges"><span class="fb fb-uq">UNIQUE</span></span></div>
+    <div class="row"><span class="fname">display_name</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">description</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="tog" onclick="tog(this)"><span class="a">&#9654;</span>sample</div>
+    <div class="pre">{
+  <span class="k">"group_key"</span>: <span class="s">"ev_sector"</span>,
+  <span class="k">"display_name"</span>: <span class="s">"EV Sector"</span>,
+  <span class="k">"description"</span>: <span class="s">"Electric vehicle manufacturers"</span>
+}</div>
+  </div>
+  <div class="note">Seeded manually. Admin assigns group_keys to entities. MVP: no AI suggestion, no auto-creation. Convert to hybrid later.</div>
+</div>
+
+<!-- ARTICLES -->
+<div class="section">
+  <div class="section-label">ingestion</div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">articles</span></div>
+    <div class="row"><span class="fname">_id</span><span class="ftype">ObjectId</span><span class="fbadges"><span class="fb fb-id">_id</span></span></div>
+    <div class="row"><span class="fname">url_hash</span><span class="ftype">String</span><span class="fbadges"><span class="fb fb-uq">UNIQUE</span></span></div>
+    <div class="row"><span class="fname">title</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">body</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">source_url</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">published_at</span><span class="ftype">Date</span><span class="fbadges"><span class="fb fb-ix">IDX</span></span></div>
+    <div class="row"><span class="fname">is_processed</span><span class="ftype">Boolean</span><span class="fbadges"><span class="fb fb-df">false</span></span></div>
+  </div>
+</div>
+
+<!-- CONNECTIONS -->
+<div class="section">
+  <div class="section-label">connections</div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">connections</span><span class="card-tag" style="background:#2a1a1a;color:var(--red)">knowledge graph</span></div>
+    <div class="row"><span class="fname">_id</span><span class="ftype">ObjectId</span><span class="fbadges"><span class="fb fb-id">_id</span></span></div>
+    <div class="row"><span class="fname">entity_key</span><span class="ftype">String</span><span class="fbadges"><span class="fb fb-ix">IDX</span></span></div>
+    <div class="row"><span class="fname">display_name</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">event_text</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">event_category</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">impact_score</span><span class="ftype">Number</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">reasoning</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">is_macro</span><span class="ftype">Boolean</span><span class="fbadges"><span class="fb fb-df">false</span></span></div>
+    <div class="row"><span class="fname">macro_group_keys</span><span class="ftype">Array&lt;String&gt;</span><span class="fbadges"><span class="fb fb-ix">IDX</span></span></div>
+    <div class="row"><span class="fname">source_url</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">discovered_at</span><span class="ftype">Date</span><span class="fbadges"><span class="fb fb-ix">IDX</span></span></div>
+    <div class="tog" onclick="tog(this)"><span class="a">&#9654;</span>sample — micro</div>
+    <div class="pre">{
+  <span class="k">"entity_key"</span>: <span class="s">"tesla_company"</span>,
+  <span class="k">"display_name"</span>: <span class="s">"Tesla"</span>,
+  <span class="k">"event_text"</span>: <span class="s">"Q1 deliveries fell short"</span>,
+  <span class="k">"event_category"</span>: <span class="s">"earnings"</span>,
+  <span class="k">"impact_score"</span>: <span class="n">-3</span>,
+  <span class="k">"reasoning"</span>: <span class="s">"Missed targets = demand weakness"</span>,
+  <span class="k">"is_macro"</span>: <span class="b">false</span>,
+  <span class="k">"macro_group_keys"</span>: [],
+  <span class="k">"source_url"</span>: <span class="s">"https://reuters.com/..."</span>,
+  <span class="k">"discovered_at"</span>: ISODate(<span class="s">"2026-04-01"</span>)
+}</div>
+    <div class="tog" onclick="tog(this)"><span class="a">&#9654;</span>sample — macro</div>
+    <div class="pre">{
+  <span class="k">"entity_key"</span>: <span class="s">"ev_sector_group"</span>,
+  <span class="k">"display_name"</span>: <span class="s">"EV Sector"</span>,
+  <span class="k">"event_text"</span>: <span class="s">"EU tightens emission standards"</span>,
+  <span class="k">"event_category"</span>: <span class="s">"regulation"</span>,
+  <span class="k">"impact_score"</span>: <span class="n">-1</span>,
+  <span class="k">"reasoning"</span>: <span class="s">"Higher compliance costs for EV makers"</span>,
+  <span class="k">"is_macro"</span>: <span class="b">true</span>,
+  <span class="k">"macro_group_keys"</span>: [<span class="s">"ev_sector"</span>],
+  <span class="k">"source_url"</span>: <span class="s">"https://ft.com/..."</span>,
+  <span class="k">"discovered_at"</span>: ISODate(<span class="s">"2026-04-01"</span>)
+}</div>
+  </div>
+</div>
+
+<!-- DIGESTS -->
+<div class="section">
+  <div class="section-label">delivery</div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">digests</span><span class="card-tag" style="background:#2a1a2a;color:var(--pink)">embeds items[]</span></div>
+    <div class="row"><span class="fname">_id</span><span class="ftype">ObjectId</span><span class="fbadges"><span class="fb fb-id">_id</span></span></div>
+    <div class="row"><span class="fname">user_id</span><span class="ftype">ObjectId</span><span class="fbadges"><span class="fb fb-ref">REF</span><span class="fb fb-ix">IDX</span></span></div>
+    <div class="row"><span class="fname">sent_at</span><span class="ftype">Date</span><span class="fbadges"><span class="fb fb-ix">IDX</span></span></div>
+    <div class="row"><span class="fname">status</span><span class="ftype">String</span><span class="fbadges"><span class="fb fb-df">pending</span></span></div>
+    <div class="row"><span class="fname">subject_line</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">mood_summary</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row"><span class="fname">items</span><span class="ftype">Array</span><span class="fbadges"><span class="fb fb-em">EMBED</span><span class="fb fb-ar">ARR</span></span></div>
+    <div class="row nest"><span class="fname">&#8627; entity_key</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row nest"><span class="fname">&#8627; display_name</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row nest"><span class="fname">&#8627; event_text</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row nest"><span class="fname">&#8627; impact_score</span><span class="ftype">Number</span><span class="fbadges"></span></div>
+    <div class="row nest"><span class="fname">&#8627; section_type</span><span class="ftype">String</span><span class="fbadges"></span></div>
+    <div class="row nest"><span class="fname">&#8627; source_url</span><span class="ftype">String</span><span class="fbadges"></span></div>
+  </div>
+</div>
+
+<!-- REFS -->
+<div class="section">
+  <div class="section-label">references</div>
+  <div class="ref-grid">
+    <div class="ref"><span>users.watchlist</span><span class="ref-t r">KEY</span><span>entities.entity_key</span></div>
+    <div class="ref"><span>entities</span><span class="ref-t r">KEY</span><span>macro_groups.group_key</span></div>
+    <div class="ref"><span>connections</span><span class="ref-t r">KEY</span><span>entities.entity_key</span></div>
+    <div class="ref"><span>connections</span><span class="ref-t r">KEY</span><span>macro_groups.group_key</span></div>
+    <div class="ref"><span>digests</span><span class="ref-t r">REF</span><span>users._id</span></div>
+    <div class="ref"><span>users</span><span class="ref-t e">EMBED</span><span>watchlist[]</span></div>
+    <div class="ref"><span>digests</span><span class="ref-t e">EMBED</span><span>items[]</span></div>
+  </div>
+  <div class="note">Most references use string keys (entity_key, group_key) not ObjectIds. Faster matching, no lookups needed.</div>
+</div>
+
+<!-- INDEXES -->
+<div class="section">
+  <div class="section-label">indexes</div>
+  <table class="ix-table">
+    <thead><tr><th>collection</th><th>index</th><th>why</th></tr></thead>
+    <tbody>
+      <tr><td>users</td><td><code>{ email: 1 }</code> unique</td><td>dedup</td></tr>
+      <tr><td>users</td><td><code>{ "watchlist.entity_key": 1 }</code></td><td>find watchers</td></tr>
+      <tr><td>entities</td><td><code>{ entity_key: 1 }</code> unique</td><td>upsert</td></tr>
+      <tr><td>entities</td><td><code>{ macro_group_keys: 1 }</code></td><td>entities in a group</td></tr>
+      <tr><td>macro_groups</td><td><code>{ group_key: 1 }</code> unique</td><td>lookup</td></tr>
+      <tr><td>articles</td><td><code>{ url_hash: 1 }</code> unique</td><td>dedup</td></tr>
+      <tr><td>articles</td><td><code>{ published_at: -1, is_processed: 1 }</code></td><td>daily batch</td></tr>
+      <tr><td>connections</td><td><code>{ entity_key: 1, discovered_at: -1 }</code></td><td>entity timeline</td></tr>
+      <tr><td>connections</td><td><code>{ macro_group_keys: 1, discovered_at: -1 }</code></td><td>macro matching</td></tr>
+      <tr><td>digests</td><td><code>{ user_id: 1, sent_at: -1 }</code></td><td>already sent?</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- MACRO MATCHING FLOW -->
+<div class="section">
+  <div class="section-label">how macro matching works</div>
+  <div class="note" style="border-left-color:var(--green)">
+    1. user watches "tesla_company" which has macro_group_keys: ["ev_sector", "big_tech"]<br>
+    2. collect all unique group_keys from user's watchlist entities<br>
+    3. query connections: { is_macro: true, macro_group_keys: { $in: ["ev_sector", "big_tech"] }, discovered_at: today }<br>
+    4. merge with micro connections, rank by impact_score, build digest
+  </div>
+</div>
+
+<footer>daily digest — mongodb schema v3 — entity_key + manual macro groups</footer>
+</div>
+<script>function tog(e){const p=e.nextElementSibling;const o=p.style.display!=='none';p.style.display=o?'none':'block';e.classList.toggle('open',!o)}</script>
+</body>
+</html>

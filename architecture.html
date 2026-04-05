@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Digest — Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#111;--surface:#191919;--border:#2a2a2a;--border-h:#3a3a3a;--t1:#ccc;--t2:#888;--t3:#555;--green:#4a9;--red:#c66;--blue:#68b;--amber:#b96;--pink:#a68;--purple:#a8b;--mono:'JetBrains Mono',monospace}
+body{font-family:var(--mono);background:var(--bg);color:var(--t1);font-size:13px;line-height:1.6}
+.w{max-width:900px;margin:0 auto;padding:40px 24px 64px}
+header{margin-bottom:48px}
+header h1{font-size:18px;font-weight:500;margin-bottom:4px}
+header p{font-size:11px;color:var(--t3)}
+
+.toc{margin-bottom:48px;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:6px}
+.toc-title{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px}
+.toc a{display:block;color:var(--t2);text-decoration:none;font-size:12px;padding:3px 0;transition:color 0.15s}
+.toc a:hover{color:var(--t1)}
+.toc a span{color:var(--t3);margin-right:8px}
+
+.section{margin-bottom:48px}
+.section-label{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.section-num{color:var(--green)}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:10px}
+.card:hover{border-color:var(--border-h)}
+.card-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.card-name{font-weight:500;font-size:13px}
+.card-tag{font-size:9px;padding:2px 6px;border-radius:3px;margin-left:auto}
+
+.row{display:flex;align-items:baseline;padding:7px 14px;border-bottom:1px solid #1f1f1f;font-size:12px;gap:12px}
+.row:last-child{border-bottom:none}
+.row:hover{background:#1e1e1e}
+.row-label{color:var(--t2);min-width:120px;flex-shrink:0}
+.row-val{color:var(--t1)}
+
+.note{font-size:12px;color:var(--t2);line-height:1.7;padding:12px 14px;border-left:2px solid var(--border);margin:10px 0}
+
+.flow{padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:12px;line-height:2;color:var(--t2);margin-bottom:10px}
+.flow-title{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px}
+.step{color:var(--t1)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px}
+
+.svc{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px 14px;transition:border-color 0.2s}
+.svc:hover{border-color:var(--border-h)}
+.svc-name{font-size:13px;font-weight:500;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.svc-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.svc-desc{font-size:11px;color:var(--t3);line-height:1.5}
+
+.conn{display:flex;align-items:center;gap:6px;padding:6px 0;font-size:11px;color:var(--t2)}
+.conn-arrow{color:var(--t3)}
+.conn-label{font-size:10px;color:var(--t3);margin-left:auto;font-style:italic}
+
+.table{width:100%;border-collapse:collapse;font-size:12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.table th{text-align:left;padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--t3);background:#1a1a1a;border-bottom:1px solid var(--border);font-weight:500}
+.table td{padding:7px 14px;border-bottom:1px solid #1f1f1f}
+.table tr:last-child td{border-bottom:none}
+.table tr:hover td{background:#1e1e1e}
+.table code{color:var(--green)}
+
+.ascii{font-size:11px;line-height:1.6;color:var(--t2);padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow-x:auto;white-space:pre}
+.ascii .hl{color:var(--green)}
+.ascii .dim{color:var(--t3)}
+.ascii .warn{color:var(--amber)}
+.ascii .info{color:var(--blue)}
+.ascii .err{color:var(--red)}
+.ascii .pink{color:var(--pink)}
+
+footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--border);font-size:10px;color:var(--t3);text-align:center}
+
+@media(max-width:640px){.w{padding:24px 12px 48px}.grid{grid-template-columns:1fr}.row-label{min-width:80px}}
+</style>
+</head>
+<body>
+<div class="w">
+
+<header>
+  <h1>daily digest — architecture</h1>
+  <p>system design. data flow. service map. how everything connects.</p>
+</header>
+
+<div class="toc">
+  <div class="toc-title">contents</div>
+  <a href="#overview"><span>01</span>system overview</a>
+  <a href="#services"><span>02</span>service map</a>
+  <a href="#data"><span>03</span>data flow</a>
+  <a href="#pipeline"><span>04</span>daily pipeline</a>
+  <a href="#entity"><span>05</span>entity resolution</a>
+  <a href="#macro"><span>06</span>macro matching</a>
+  <a href="#collections"><span>07</span>collections</a>
+  <a href="#connections"><span>08</span>service connections</a>
+  <a href="#tech"><span>09</span>tech stack</a>
+  <a href="#deploy"><span>10</span>deployment</a>
+</div>
+
+<!-- 01 -->
+<div class="section" id="overview">
+  <div class="section-label"><span class="section-num">01</span>system overview</div>
+  <div class="ascii"><span class="dim">what it does:</span>
+
+  user tells us what entities to watch (stocks, people, companies)
+  every morning a cron job runs:
+    <span class="hl">fetch news</span> → <span class="warn">filter relevant</span> → <span class="pink">AI extracts entities + events + scores</span> → <span class="info">match to watchlists</span> → <span class="err">send email</span>
+
+<span class="dim">what it builds over time:</span>
+
+  a knowledge graph of entities and their connections to real-world events
+  every AI extraction is a node in the graph
+  queryable: "what happened to tesla this week" = one indexed query</div>
+
+  <div class="note">Email-only MVP. No frontend dashboard. No auth. No real-time. Ship fast, validate, add UI later.</div>
+</div>
+
+<!-- 02 -->
+<div class="section" id="services">
+  <div class="section-label"><span class="section-num">02</span>service map</div>
+
+  <div class="ascii"><span class="dim">                    ┌─────────────────────────────────────┐</span>
+<span class="dim">                    │</span>          <span class="hl">CRON — dailyPipeline.js</span>         <span class="dim">│</span>
+<span class="dim">                    │</span>          orchestrates everything          <span class="dim">│</span>
+<span class="dim">                    └──────┬──────────┬──────────┬──────────┘</span>
+<span class="dim">                           │          │          │</span>
+<span class="dim">                    ┌──────▼───┐ ┌────▼─────┐ ┌─▼──────────┐</span>
+<span class="dim">                    │</span><span class="hl">news.svc  </span><span class="dim">│ │</span><span class="pink">ai.svc    </span><span class="dim">│ │</span><span class="info">digest.svc  </span><span class="dim">│</span>
+<span class="dim">                    │</span>fetch     <span class="dim">│ │</span>extract   <span class="dim">│ │</span>compose     <span class="dim">│</span>
+<span class="dim">                    │</span>dedup     <span class="dim">│ │</span>score     <span class="dim">│ │</span>match       <span class="dim">│</span>
+<span class="dim">                    │</span>store     <span class="dim">│ │</span>parse     <span class="dim">│ │</span>rank        <span class="dim">│</span>
+<span class="dim">                    └──────────┘ └──────────┘ └──────┬─────┘</span>
+<span class="dim">                                                    │</span>
+<span class="dim">                    ┌──────────┐              ┌─────▼──────┐</span>
+<span class="dim">                    │</span><span class="warn">entity.svc</span><span class="dim">│              │</span><span class="err">email.svc   </span><span class="dim">│</span>
+<span class="dim">                    │</span>upsert    <span class="dim">│              │</span>nodemailer  <span class="dim">│</span>
+<span class="dim">                    │</span>lookup    <span class="dim">│              │</span>template    <span class="dim">│</span>
+<span class="dim">                    └──────────┘              └────────────┘</span>
+
+<span class="dim">  controllers:</span>
+<span class="dim">                    ┌──────────┐ ┌──────────┐ ┌────────────┐</span>
+<span class="dim">                    │</span>user.ctrl <span class="dim">│ │</span>entity.ctl<span class="dim">│ │</span>digest.ctrl <span class="dim">│</span>
+<span class="dim">                    │</span>macroG.ctl<span class="dim">│ │          │ │</span>            <span class="dim">│</span>
+<span class="dim">                    └──────────┘ └──────────┘ └────────────┘</span></div>
+
+  <div class="grid" style="margin-top:16px">
+    <div class="svc">
+      <div class="svc-name"><span class="svc-dot" style="background:var(--green)"></span>news.service</div>
+      <div class="svc-desc">Fetches articles from NewsAPI. Hashes URLs for dedup. Stores raw articles. Returns unprocessed batch.</div>
+    </div>
+    <div class="svc">
+      <div class="svc-name"><span class="svc-dot" style="background:var(--pink)"></span>ai.service</div>
+      <div class="svc-desc">Sends articles to Claude. Gets back entity_key, display_name, events, scores. Generates mood summaries. Parses and validates JSON output.</div>
+    </div>
+    <div class="svc">
+      <div class="svc-name"><span class="svc-dot" style="background:var(--amber)"></span>entity.service</div>
+      <div class="svc-desc">Upserts entities by entity_key. Manages macro_group_keys assignment. Canonical registry for all known entities.</div>
+    </div>
+    <div class="svc">
+      <div class="svc-name"><span class="svc-dot" style="background:var(--blue)"></span>digest.service</div>
+      <div class="svc-desc">Orchestrates per-user digest. Queries micro + macro connections. Merges, ranks, deduplicates. Creates digest documents.</div>
+    </div>
+    <div class="svc">
+      <div class="svc-name"><span class="svc-dot" style="background:var(--red)"></span>email.service</div>
+      <div class="svc-desc">Nodemailer SMTP transport. Renders HTML email template from digest data. Sends and tracks delivery status.</div>
+    </div>
+  </div>
+</div>
+
+<!-- 03 -->
+<div class="section" id="data">
+  <div class="section-label"><span class="section-num">03</span>data flow</div>
+  <div class="ascii"><span class="dim">external</span>                    <span class="dim">internal</span>                         <span class="dim">output</span>
+
+<span class="hl">NewsAPI</span> ──fetch──▶ <span class="warn">articles</span> ──process──▶ <span class="pink">connections</span> ──match──▶ <span class="info">digests</span> ──send──▶ <span class="err">email</span>
+                       <span class="dim">│</span>                    <span class="dim">│</span>
+                       <span class="dim">│</span>                    <span class="dim">▼</span>
+                       <span class="dim">│</span>               <span class="warn">entities</span>
+                       <span class="dim">│</span>              <span class="dim">(upserted)</span>
+                       <span class="dim">▼</span>
+                  <span class="dim">is_processed</span>
+                  <span class="dim">= true</span>
+
+<span class="dim">reads:</span>
+  cron reads <span class="hl">articles</span> (unprocessed)
+  cron reads <span class="hl">users</span> (active, with watchlist)
+  cron reads <span class="hl">entities</span> (to get macro_group_keys per watchlist item)
+  cron reads <span class="hl">connections</span> (today's, matching entity_keys + group_keys)
+
+<span class="dim">writes:</span>
+  news.svc writes <span class="hl">articles</span>
+  ai.svc + entity.svc writes <span class="hl">entities</span> (upsert) + <span class="hl">connections</span> (insert)
+  digest.svc writes <span class="hl">digests</span>
+  email.svc updates <span class="hl">digests</span> (status → delivered)</div>
+</div>
+
+<!-- 04 -->
+<div class="section" id="pipeline">
+  <div class="section-label"><span class="section-num">04</span>daily pipeline</div>
+  <div class="flow">
+    <div class="flow-title">06:00 AM — cron fires</div>
+    <span class="step">step 1 — ingest</span><br>
+    &nbsp;&nbsp;fetch news from API<br>
+    &nbsp;&nbsp;hash URLs, skip duplicates<br>
+    &nbsp;&nbsp;store new articles (is_processed = false)<br><br>
+    <span class="step">step 2 — pre-filter (free, no AI)</span><br>
+    &nbsp;&nbsp;collect all entity display_names from all user watchlists<br>
+    &nbsp;&nbsp;string match against article title + body<br>
+    &nbsp;&nbsp;only articles mentioning a watched entity pass through<br>
+    &nbsp;&nbsp;~80% of articles skipped = ~80% cost saved<br><br>
+    <span class="step">step 3 — process (Claude API)</span><br>
+    &nbsp;&nbsp;for each relevant article:<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;send to Claude → get [{ entity_key, display_name, event_text, event_category, impact_score, reasoning, is_macro }]<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;for each extraction: upsert entity by entity_key<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;bulk insert connections<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;mark article as processed<br><br>
+    <span class="step">step 4 — compose</span><br>
+    &nbsp;&nbsp;for each active user:<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;collect entity_keys from watchlist<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;lookup macro_group_keys from entities<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;query connections: entity_key $in watchlist (micro)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;query connections: macro_group_keys $in groups, is_macro=true (macro)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;merge + dedup + sort by abs(impact_score)<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;Claude generates mood summary + subject line<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;create digest doc<br><br>
+    <span class="step">step 5 — deliver</span><br>
+    &nbsp;&nbsp;for each pending digest:<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;render email HTML from digest items<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;send via nodemailer<br>
+    &nbsp;&nbsp;&nbsp;&nbsp;mark status = delivered
+  </div>
+</div>
+
+<!-- 05 -->
+<div class="section" id="entity">
+  <div class="section-label"><span class="section-num">05</span>entity resolution</div>
+  <div class="ascii"><span class="dim">problem:</span>
+  articles say "Tesla", "TSLA", "Tesla Inc", "Tesla Motors"
+  all the same entity. must resolve to one record.
+
+  also: "Tesla" the company vs "Tesla" the scientist
+  different entities. same word. must disambiguate.
+
+<span class="dim">solution:</span>
+  Claude returns an <span class="hl">entity_key</span> in format: <span class="hl">name_type</span>
+
+  "Tesla Inc"     → <span class="hl">tesla_company</span>
+  "TSLA"          → <span class="hl">tesla_company</span>
+  "Tesla Motors"  → <span class="hl">tesla_company</span>
+  "Nikola Tesla"  → <span class="hl">nikola_tesla_person</span>
+
+<span class="dim">how it works:</span>
+  1. AI prompt enforces: "return entity_key as lowercase name_type"
+  2. naming convention is self-normalizing — no registry list needed
+  3. entity.service upserts by entity_key (findOneAndUpdate, upsert: true)
+  4. all downstream references use entity_key, never display_name
+  5. display_name is for humans only (emails, UI)</div>
+</div>
+
+<!-- 06 -->
+<div class="section" id="macro">
+  <div class="section-label"><span class="section-num">06</span>macro matching</div>
+  <div class="ascii"><span class="dim">what:</span>
+  events that affect an entire sector, not just one entity.
+  "Fed raises rates" → affects all banking stocks.
+  user watches "jpmorgan_company" → gets the Fed event via macro match.
+
+<span class="dim">how (MVP — manual only):</span>
+  1. admin seeds macro_groups: "ev_sector", "banking", "ai_industry"
+  2. admin assigns group_keys to entities:
+     tesla_company → ["ev_sector", "big_tech"]
+     jpmorgan_company → ["banking"]
+  3. when Claude flags is_macro = true on an event,
+     it also returns which macro_group_keys are affected
+  4. digest builder collects user's group_keys from their watchlist entities
+  5. queries connections where macro_group_keys overlap + is_macro = true
+
+<span class="dim">later (hybrid):</span>
+  pass group list in Claude prompt.
+  AI picks from approved list.
+  suggestions queue for new groups.</div>
+</div>
+
+<!-- 07 -->
+<div class="section" id="collections">
+  <div class="section-label"><span class="section-num">07</span>collections — 7 total</div>
+  <table class="table">
+    <thead><tr><th>collection</th><th>purpose</th><th>key field</th><th>notes</th></tr></thead>
+    <tbody>
+      <tr><td><code>users</code></td><td>accounts</td><td>email (unique)</td><td>embeds watchlist[]</td></tr>
+      <tr><td><code>entities</code></td><td>canonical registry</td><td>entity_key (unique)</td><td>AI upserts, admin assigns groups</td></tr>
+      <tr><td><code>macro_groups</code></td><td>sectors / groups</td><td>group_key (unique)</td><td>manually seeded</td></tr>
+      <tr><td><code>articles</code></td><td>raw news</td><td>url_hash (unique)</td><td>lean, no AI output embedded</td></tr>
+      <tr><td><code>connections</code></td><td>knowledge graph</td><td>entity_key + discovered_at</td><td>one doc per entity-event pair</td></tr>
+      <tr><td><code>digests</code></td><td>sent emails</td><td>user_id + sent_at</td><td>embeds items[] snapshot</td></tr>
+    </tbody>
+  </table>
+  <div class="note">6 collections shown. 7th is the default mongoose "sessions" or similar if needed. Core is 6.</div>
+</div>
+
+<!-- 08 -->
+<div class="section" id="connections">
+  <div class="section-label"><span class="section-num">08</span>service connections</div>
+  <div class="ascii"><span class="dim">who calls who:</span>
+
+  <span class="hl">dailyPipeline</span>
+    <span class="dim">├──▶</span> news.service     <span class="dim">→ reads/writes</span> articles
+    <span class="dim">├──▶</span> ai.service       <span class="dim">→ calls</span> Claude API
+    <span class="dim">│     └──▶</span> entity.service <span class="dim">→ reads/writes</span> entities
+    <span class="dim">│                        → writes</span> connections
+    <span class="dim">├──▶</span> digest.service   <span class="dim">→ reads</span> users, entities, connections
+    <span class="dim">│                        → writes</span> digests
+    <span class="dim">│     └──▶</span> ai.service   <span class="dim">→ calls</span> Claude API (mood summary)
+    <span class="dim">└──▶</span> email.service    <span class="dim">→ reads</span> digests
+                             <span class="dim">→ sends</span> SMTP
+                             <span class="dim">→ updates</span> digests (status)
+
+  <span class="hl">controllers</span> <span class="dim">(REST API — for admin + signup)</span>
+    <span class="dim">├──</span> user.controller     <span class="dim">→</span> user CRUD + watchlist
+    <span class="dim">├──</span> entity.controller   <span class="dim">→</span> entity listing + group assignment
+    <span class="dim">├──</span> macroGroup.controller <span class="dim">→</span> group CRUD
+    <span class="dim">└──</span> digest.controller   <span class="dim">→</span> digest history + manual trigger</div>
+</div>
+
+<!-- 09 -->
+<div class="section" id="tech">
+  <div class="section-label"><span class="section-num">09</span>tech stack</div>
+  <table class="table">
+    <thead><tr><th>layer</th><th>tech</th><th>why</th></tr></thead>
+    <tbody>
+      <tr><td>runtime</td><td><code>Node.js + Express</code></td><td>fast to build, async I/O</td></tr>
+      <tr><td>database</td><td><code>MongoDB Atlas</code></td><td>document-shaped AI output, free tier</td></tr>
+      <tr><td>ODM</td><td><code>Mongoose</code></td><td>schemas, indexes, validation</td></tr>
+      <tr><td>AI</td><td><code>Claude API (Haiku)</code></td><td>entity extraction, sentiment, mood</td></tr>
+      <tr><td>email</td><td><code>Nodemailer</code></td><td>SMTP, no vendor lock-in, free</td></tr>
+      <tr><td>scheduler</td><td><code>node-cron</code></td><td>in-process, simple</td></tr>
+      <tr><td>news</td><td><code>NewsAPI</code></td><td>free tier, 100 req/day</td></tr>
+      <tr><td>http</td><td><code>Axios</code></td><td>news API calls</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 10 -->
+<div class="section" id="deploy">
+  <div class="section-label"><span class="section-num">10</span>deployment</div>
+  <div class="ascii"><span class="dim">MVP deployment:</span>
+
+  <span class="hl">Railway / Render</span>
+    <span class="dim">├──</span> Express server (API + cron in same process)
+    <span class="dim">├──</span> env vars for all secrets
+    <span class="dim">└──</span> free tier works for MVP scale
+
+  <span class="hl">MongoDB Atlas</span>
+    <span class="dim">└──</span> free tier (512MB, shared cluster)
+
+  <span class="hl">SMTP</span>
+    <span class="dim">└──</span> Gmail app password or AWS SES free tier
+
+<span class="dim">cost estimate (~10 users):</span>
+  MongoDB Atlas        <span class="hl">$0</span>     free tier
+  Railway/Render       <span class="hl">$0-5</span>   free or hobby tier
+  Claude API (Haiku)   <span class="hl">$0-1</span>   with pre-filter, ~5 calls/day
+  NewsAPI              <span class="hl">$0</span>     free tier
+  Gmail SMTP           <span class="hl">$0</span>     500 emails/day
+  <span class="dim">─────────────────────────────</span>
+  total                <span class="hl">$0-6/month</span></div>
+</div>
+
+<footer>daily digest — architecture — lean mvp</footer>
+
+</div>
+</body>
+</html>

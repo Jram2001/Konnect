@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Digest — Implementation Spec v3</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#111;--surface:#191919;--border:#2a2a2a;--border-h:#3a3a3a;--t1:#ccc;--t2:#888;--t3:#555;--green:#4a9;--red:#c66;--blue:#68b;--amber:#b96;--pink:#a68;--purple:#a8b;--mono:'JetBrains Mono',monospace}
+body{font-family:var(--mono);background:var(--bg);color:var(--t1);font-size:13px;line-height:1.6}
+.w{max-width:900px;margin:0 auto;padding:40px 24px 64px}
+header{margin-bottom:48px}
+header h1{font-size:18px;font-weight:500;margin-bottom:4px}
+header p{font-size:11px;color:var(--t3)}
+.toc{margin-bottom:48px;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:6px}
+.toc-title{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px}
+.toc a{display:block;color:var(--t2);text-decoration:none;font-size:12px;padding:3px 0;transition:color 0.15s}
+.toc a:hover{color:var(--t1)}
+.toc a span{color:var(--t3);margin-right:8px}
+.section{margin-bottom:48px}
+.section-label{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:16px;padding-bottom:8px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.section-num{color:var(--green)}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-bottom:10px}
+.card:hover{border-color:var(--border-h)}
+.card-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.card-name{font-weight:500;font-size:13px}
+.card-path{font-size:10px;color:var(--t3);margin-left:auto}
+.card-tag{font-size:9px;padding:2px 6px;border-radius:3px}
+.fn{padding:8px 14px;border-bottom:1px solid #1f1f1f;font-size:12px;display:flex;gap:8px;align-items:flex-start}
+.fn:last-child{border-bottom:none}
+.fn:hover{background:#1e1e1e}
+.fn-name{color:var(--green);min-width:220px;flex-shrink:0}
+.fn-desc{color:var(--t2)}
+.fn-tag{font-size:9px;padding:1px 5px;border-radius:2px;flex-shrink:0;margin-left:auto}
+.fn-tag.get{background:#1a2a3a;color:var(--blue)}
+.fn-tag.post{background:#1a2e24;color:var(--green)}
+.fn-tag.put{background:#2a2418;color:var(--amber)}
+.fn-tag.del{background:#2a1a1a;color:var(--red)}
+.fn-tag.cron{background:#2a1a2a;color:var(--pink)}
+.fn-tag.svc{background:#1e1e2e;color:var(--purple)}
+.sub{font-size:11px;color:var(--t3);padding:6px 14px 10px;line-height:1.6}
+.note{padding:12px 14px;font-size:11px;color:var(--t2);line-height:1.7;border-left:2px solid var(--border);margin:8px 0 16px}
+.flow{margin:24px 0;padding:16px 20px;background:var(--surface);border:1px solid var(--border);border-radius:6px;font-size:11px;line-height:2;color:var(--t2)}
+.flow-title{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:8px}
+.step{color:var(--t1)}
+.env-table{width:100%;border-collapse:collapse;font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-top:8px}
+.env-table th{text-align:left;padding:8px 14px;font-size:9px;text-transform:uppercase;letter-spacing:0.08em;color:var(--t3);background:#1a1a1a;border-bottom:1px solid var(--border);font-weight:500}
+.env-table td{padding:7px 14px;border-bottom:1px solid #1f1f1f}
+.env-table tr:last-child td{border-bottom:none}
+.env-table tr:hover td{background:#1e1e1e}
+.env-table code{color:var(--green)}
+.tree{font-size:11px;color:var(--t2);line-height:1.8;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:6px;overflow-x:auto;white-space:pre}
+.tree .dir{color:var(--amber)}.tree .hl{color:var(--green)}
+footer{margin-top:48px;padding-top:16px;border-top:1px solid var(--border);font-size:10px;color:var(--t3);text-align:center}
+@media(max-width:640px){.w{padding:24px 12px 48px}.fn-name{min-width:140px}.card-path{display:none}}
+</style>
+</head>
+<body>
+<div class="w">
+
+<header>
+  <h1>daily digest — implementation spec v3</h1>
+  <p>entity_key resolution. manual macro groups. every service, controller, function.</p>
+</header>
+
+<div class="toc">
+  <div class="toc-title">contents</div>
+  <a href="#structure"><span>01</span>project structure</a>
+  <a href="#models"><span>02</span>models</a>
+  <a href="#services"><span>03</span>services</a>
+  <a href="#controllers"><span>04</span>controllers / routes</a>
+  <a href="#cron"><span>05</span>cron pipeline</a>
+  <a href="#prompt"><span>06</span>ai prompt contract</a>
+  <a href="#flow"><span>07</span>daily pipeline flow</a>
+  <a href="#env"><span>08</span>env vars + deps</a>
+  <a href="#order"><span>09</span>build order</a>
+</div>
+
+<!-- 01 -->
+<div class="section" id="structure">
+  <div class="section-label"><span class="section-num">01</span>project structure</div>
+  <div class="tree"><span class="dir">daily-digest/</span>
+├── <span class="dir">src/</span>
+│   ├── <span class="dir">models/</span>
+│   │   ├── <span class="hl">user.model.js</span>
+│   │   ├── <span class="hl">entity.model.js</span>
+│   │   ├── <span class="hl">macroGroup.model.js</span>
+│   │   ├── <span class="hl">article.model.js</span>
+│   │   ├── <span class="hl">connection.model.js</span>
+│   │   └── <span class="hl">digest.model.js</span>
+│   ├── <span class="dir">services/</span>
+│   │   ├── <span class="hl">news.service.js</span>
+│   │   ├── <span class="hl">ai.service.js</span>
+│   │   ├── <span class="hl">entity.service.js</span>
+│   │   ├── <span class="hl">digest.service.js</span>
+│   │   └── <span class="hl">email.service.js</span>
+│   ├── <span class="dir">controllers/</span>
+│   │   ├── <span class="hl">user.controller.js</span>
+│   │   ├── <span class="hl">entity.controller.js</span>
+│   │   ├── <span class="hl">macroGroup.controller.js</span>
+│   │   └── <span class="hl">digest.controller.js</span>
+│   ├── <span class="dir">routes/</span>
+│   ├── <span class="dir">cron/</span>
+│   │   └── <span class="hl">dailyPipeline.js</span>
+│   ├── <span class="dir">seed/</span>
+│   │   └── <span class="hl">macroGroups.seed.js</span>
+│   ├── <span class="dir">config/</span>
+│   │   └── <span class="hl">db.js</span>
+│   └── <span class="hl">app.js</span>
+├── .env
+└── package.json</div>
+</div>
+
+<!-- 02 -->
+<div class="section" id="models">
+  <div class="section-label"><span class="section-num">02</span>models</div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">user.model.js</span></div>
+    <div class="fn"><span class="fn-name">Schema: User</span><span class="fn-desc">email (unique), is_active, watchlist [{ entity_key, display_name }], created_at</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">entity.model.js</span></div>
+    <div class="fn"><span class="fn-name">Schema: Entity</span><span class="fn-desc">entity_key (unique), display_name, macro_group_keys []</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">macroGroup.model.js</span></div>
+    <div class="fn"><span class="fn-name">Schema: MacroGroup</span><span class="fn-desc">group_key (unique), display_name, description</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">article.model.js</span></div>
+    <div class="fn"><span class="fn-name">Schema: Article</span><span class="fn-desc">url_hash (unique), title, body, source_url, published_at, is_processed</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">connection.model.js</span></div>
+    <div class="fn"><span class="fn-name">Schema: Connection</span><span class="fn-desc">entity_key, display_name, event_text, event_category, impact_score, reasoning, is_macro, macro_group_keys [], source_url, discovered_at</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">digest.model.js</span></div>
+    <div class="fn"><span class="fn-name">Schema: Digest</span><span class="fn-desc">user_id, sent_at, status, subject_line, mood_summary, items [{ entity_key, display_name, event_text, impact_score, section_type, source_url }]</span></div>
+  </div>
+</div>
+
+<!-- 03 -->
+<div class="section" id="services">
+  <div class="section-label"><span class="section-num">03</span>services</div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-name">news.service.js</span><span class="card-tag" style="background:#1a2e24;color:var(--green)">ingestion</span></div>
+    <div class="fn"><span class="fn-name">fetchTodaysNews()</span><span class="fn-desc">call NewsAPI, return raw articles</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">deduplicateArticles(articles)</span><span class="fn-desc">hash urls, filter already-stored</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">storeArticles(articles)</span><span class="fn-desc">bulk insert, is_processed = false</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">getUnprocessedArticles()</span><span class="fn-desc">today's articles where is_processed = false</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">markAsProcessed(articleId)</span><span class="fn-desc">set is_processed = true</span><span class="fn-tag svc">svc</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-name">ai.service.js</span><span class="card-tag" style="background:#2a1a2a;color:var(--pink)">claude api</span></div>
+    <div class="fn"><span class="fn-name">extractFromArticle(article)</span><span class="fn-desc">send article to claude. returns [{ entity_key, display_name, event_text, event_category, impact_score, reasoning, is_macro }]</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">composeMoodSummary(events)</span><span class="fn-desc">given matched events, generate 1-line mood + subject</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">buildExtractionPrompt(text)</span><span class="fn-desc">system prompt with entity_key format rules only. no registry list — naming convention is self-normalizing</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">parseAIResponse(response)</span><span class="fn-desc">parse json, validate, handle errors</span><span class="fn-tag svc">svc</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-name">entity.service.js</span><span class="card-tag" style="background:#2a2418;color:var(--amber)">registry</span></div>
+    <div class="fn"><span class="fn-name">upsertEntity(entity_key, display_name)</span><span class="fn-desc">find or create by entity_key, return doc</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">getByKey(entity_key)</span><span class="fn-desc">fetch single entity</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">getAllEntities()</span><span class="fn-desc">list all (admin use)</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">assignMacroGroup(entity_key, group_key)</span><span class="fn-desc">push group_key to entity's macro_group_keys</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">removeMacroGroup(entity_key, group_key)</span><span class="fn-desc">pull group_key from entity</span><span class="fn-tag svc">svc</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-name">digest.service.js</span><span class="card-tag" style="background:#1e1e2e;color:var(--purple)">composer</span></div>
+    <div class="fn"><span class="fn-name">buildDigestForUser(user)</span><span class="fn-desc">orchestrator: watchlist → get entity macro_group_keys → query micro + macro connections → merge + rank → AI mood → create digest</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">getMicroConnections(entityKeys[], since)</span><span class="fn-desc">query connections where entity_key $in keys, discovered_at >= since</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">getMacroConnections(groupKeys[], since)</span><span class="fn-desc">query connections where is_macro=true, macro_group_keys $in keys</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">mergeAndRank(micro, macro)</span><span class="fn-desc">combine, dedup, sort by abs(impact_score) desc</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">createDigest(data)</span><span class="fn-desc">insert digest doc</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">markSent(digestId)</span><span class="fn-desc">status → "delivered"</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">hasDigestToday(userId)</span><span class="fn-desc">check if already sent today</span><span class="fn-tag svc">svc</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-name">email.service.js</span><span class="card-tag" style="background:#1a2a3a;color:var(--blue)">nodemailer</span></div>
+    <div class="fn"><span class="fn-name">createTransport()</span><span class="fn-desc">init nodemailer with SMTP config (gmail / ses / any smtp)</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">sendDigestEmail(user, digest)</span><span class="fn-desc">render html, send via nodemailer transport</span><span class="fn-tag svc">svc</span></div>
+    <div class="fn"><span class="fn-name">buildEmailHtml(digest)</span><span class="fn-desc">mood line + micro section + macro section + links</span><span class="fn-tag svc">svc</span></div>
+  </div>
+</div>
+
+<!-- 04 -->
+<div class="section" id="controllers">
+  <div class="section-label"><span class="section-num">04</span>controllers / routes</div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-name">user.controller.js</span></div>
+    <div class="fn"><span class="fn-name">POST /api/users/signup</span><span class="fn-desc">create user with email</span><span class="fn-tag post">POST</span></div>
+    <div class="fn"><span class="fn-name">GET /api/users/:id</span><span class="fn-desc">get user + watchlist</span><span class="fn-tag get">GET</span></div>
+    <div class="fn"><span class="fn-name">POST /api/users/:id/watchlist</span><span class="fn-desc">add entity { entity_key, display_name }. upserts in entity registry too</span><span class="fn-tag post">POST</span></div>
+    <div class="fn"><span class="fn-name">DELETE /api/users/:id/watchlist/:entityKey</span><span class="fn-desc">remove from watchlist</span><span class="fn-tag del">DEL</span></div>
+    <div class="fn"><span class="fn-name">PUT /api/users/:id/deactivate</span><span class="fn-desc">unsubscribe</span><span class="fn-tag put">PUT</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-name">entity.controller.js</span></div>
+    <div class="fn"><span class="fn-name">GET /api/entities</span><span class="fn-desc">list all entities</span><span class="fn-tag get">GET</span></div>
+    <div class="fn"><span class="fn-name">GET /api/entities/:key</span><span class="fn-desc">get entity by entity_key</span><span class="fn-tag get">GET</span></div>
+    <div class="fn"><span class="fn-name">GET /api/entities/:key/connections</span><span class="fn-desc">all connections for this entity (?since=)</span><span class="fn-tag get">GET</span></div>
+    <div class="fn"><span class="fn-name">PUT /api/entities/:key/macro-groups</span><span class="fn-desc">assign group_key to entity (admin)</span><span class="fn-tag put">PUT</span></div>
+    <div class="fn"><span class="fn-name">DELETE /api/entities/:key/macro-groups/:groupKey</span><span class="fn-desc">remove group from entity (admin)</span><span class="fn-tag del">DEL</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-name">macroGroup.controller.js</span></div>
+    <div class="fn"><span class="fn-name">GET /api/macro-groups</span><span class="fn-desc">list all groups</span><span class="fn-tag get">GET</span></div>
+    <div class="fn"><span class="fn-name">POST /api/macro-groups</span><span class="fn-desc">create group { group_key, display_name, description }</span><span class="fn-tag post">POST</span></div>
+    <div class="fn"><span class="fn-name">GET /api/macro-groups/:key/entities</span><span class="fn-desc">all entities in this group</span><span class="fn-tag get">GET</span></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-name">digest.controller.js</span></div>
+    <div class="fn"><span class="fn-name">GET /api/digests/:userId</span><span class="fn-desc">list past digests</span><span class="fn-tag get">GET</span></div>
+    <div class="fn"><span class="fn-name">GET /api/digests/:userId/latest</span><span class="fn-desc">most recent digest</span><span class="fn-tag get">GET</span></div>
+    <div class="fn"><span class="fn-name">POST /api/digests/trigger</span><span class="fn-desc">manually trigger pipeline (dev)</span><span class="fn-tag post">POST</span></div>
+  </div>
+</div>
+
+<!-- 05 -->
+<div class="section" id="cron">
+  <div class="section-label"><span class="section-num">05</span>cron pipeline</div>
+  <div class="card">
+    <div class="card-head"><span class="card-name">dailyPipeline.js</span><span class="card-tag" style="background:#2a1a2a;color:var(--pink)">06:00 AM</span></div>
+    <div class="fn"><span class="fn-name">runPipeline()</span><span class="fn-desc">orchestrator — steps 1-4 in sequence</span><span class="fn-tag cron">CRON</span></div>
+    <div class="fn"><span class="fn-name">step1_ingest()</span><span class="fn-desc">fetch → dedup → store articles</span><span class="fn-tag cron">CRON</span></div>
+    <div class="fn"><span class="fn-name">step2_process()</span><span class="fn-desc">for each unprocessed: extractFromArticle → upsertEntity per entity → bulk insert connections directly → markAsProcessed</span><span class="fn-tag cron">CRON</span></div>
+    <div class="fn"><span class="fn-name">step3_compose()</span><span class="fn-desc">for each active user: resolve macro groups from watchlist → query micro + macro connections → merge → AI mood → create digest</span><span class="fn-tag cron">CRON</span></div>
+    <div class="fn"><span class="fn-name">step4_deliver()</span><span class="fn-desc">for each pending digest: render email → send → mark delivered</span><span class="fn-tag cron">CRON</span></div>
+  </div>
+</div>
+
+<!-- 06 -->
+<div class="section" id="prompt">
+  <div class="section-label"><span class="section-num">06</span>ai prompt contract</div>
+  <div class="note" style="border-left-color:var(--green)">
+    Claude receives:<br>
+    - article title + body<br><br>
+    Claude must return JSON array:<br>
+    [{ entity_key, display_name, event_text, event_category, impact_score (-5 to +5), reasoning, is_macro }]<br><br>
+    entity_key rules:<br>
+    - lowercase, format: name_type (e.g. "tesla_company", "nikola_tesla_person")<br>
+    - naming convention is self-normalizing — no registry list needed in prompt<br>
+    - "Tesla Inc", "TSLA", "Tesla Motors" all → "tesla_company"<br>
+    - "Nikola Tesla" → "nikola_tesla_person" (different entity)<br>
+    - never vary the key across articles<br><br>
+    is_macro = true when the event affects an entire sector/industry, not just one entity
+  </div>
+</div>
+
+<!-- 07 -->
+<div class="section" id="flow">
+  <div class="section-label"><span class="section-num">07</span>daily pipeline flow</div>
+  <div class="flow">
+    <div class="flow-title">06:00 AM</div>
+    <span class="step">1. fetch news from APIs</span><br>
+    <span class="step">2. dedup by url_hash, store articles</span><br>
+    <span class="step">3. for each unprocessed article:</span><br>
+    <span style="margin-left:16px"><span class="step">3a. send to claude (no registry list needed — entity_key format is self-normalizing)</span></span><br>
+    <span style="margin-left:16px"><span class="step">3b. for each extraction: upsert entity by entity_key</span></span><br>
+    <span style="margin-left:16px"><span class="step">3c. bulk insert connections</span></span><br>
+    <span style="margin-left:16px"><span class="step">3d. mark article processed</span></span><br>
+    <span class="step">4. for each active user:</span><br>
+    <span style="margin-left:16px"><span class="step">4a. collect entity_keys from watchlist</span></span><br>
+    <span style="margin-left:16px"><span class="step">4b. lookup macro_group_keys from entities</span></span><br>
+    <span style="margin-left:16px"><span class="step">4c. query connections: entity_key $in watchlist_keys (micro)</span></span><br>
+    <span style="margin-left:16px"><span class="step">4d. query connections: macro_group_keys $in user_groups, is_macro=true</span></span><br>
+    <span style="margin-left:16px"><span class="step">4e. merge + rank by abs(impact_score)</span></span><br>
+    <span style="margin-left:16px"><span class="step">4f. claude generates mood + subject line</span></span><br>
+    <span style="margin-left:16px"><span class="step">4g. create digest doc</span></span><br>
+    <span class="step">5. for each pending digest:</span><br>
+    <span style="margin-left:16px"><span class="step">5a. render email html</span></span><br>
+    <span style="margin-left:16px"><span class="step">5b. send via sendgrid</span></span><br>
+    <span style="margin-left:16px"><span class="step">5c. mark delivered</span></span>
+  </div>
+</div>
+
+<!-- 08 -->
+<div class="section" id="env">
+  <div class="section-label"><span class="section-num">08</span>env vars + deps</div>
+  <table class="env-table">
+    <thead><tr><th>var</th><th>what</th></tr></thead>
+    <tbody>
+      <tr><td><code>MONGODB_URI</code></td><td>atlas connection string</td></tr>
+      <tr><td><code>ANTHROPIC_API_KEY</code></td><td>claude api</td></tr>
+      <tr><td><code>NEWS_API_KEY</code></td><td>newsapi.org</td></tr>
+      <tr><td><code>SMTP_HOST</code></td><td>smtp server (e.g. smtp.gmail.com)</td></tr>
+      <tr><td><code>SMTP_PORT</code></td><td>587 (tls) or 465 (ssl)</td></tr>
+      <tr><td><code>SMTP_USER</code></td><td>email account username</td></tr>
+      <tr><td><code>SMTP_PASS</code></td><td>email account password / app password</td></tr>
+      <tr><td><code>FROM_EMAIL</code></td><td>sender address</td></tr>
+      <tr><td><code>CRON_SCHEDULE</code></td><td>"0 6 * * *"</td></tr>
+      <tr><td><code>PORT</code></td><td>3000</td></tr>
+    </tbody>
+  </table>
+  <table class="env-table" style="margin-top:16px">
+    <thead><tr><th>package</th><th>what</th></tr></thead>
+    <tbody>
+      <tr><td><code>express</code></td><td>api server</td></tr>
+      <tr><td><code>mongoose</code></td><td>mongodb odm</td></tr>
+      <tr><td><code>@anthropic-ai/sdk</code></td><td>claude client</td></tr>
+      <tr><td><code>node-cron</code></td><td>scheduler</td></tr>
+      <tr><td><code>nodemailer</code></td><td>smtp email</td></tr>
+      <tr><td><code>axios</code></td><td>http client</td></tr>
+      <tr><td><code>dotenv</code></td><td>env vars</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- 09 -->
+<div class="section" id="order">
+  <div class="section-label"><span class="section-num">09</span>build order</div>
+  <div class="flow">
+    <div class="flow-title">sequence</div>
+    <span class="step">1. project setup</span> — init, deps, mongo connect, express<br>
+    <span class="step">2. models</span> — all 6 schemas<br>
+    <span class="step">3. seed macro groups</span> — run macroGroups.seed.js<br>
+    <span class="step">4. entity.service + user.controller</span> — signup + watchlist CRUD<br>
+    <span class="step">5. macroGroup.controller</span> — CRUD + assign entities to groups<br>
+    <span class="step">6. news.service</span> — fetch, dedup, store<br>
+    <span class="step">7. ai.service</span> — prompt + extraction + entity_key resolution<br>
+    <span class="step">8. digest.service</span> — query connections + match + compose<br>
+    <span class="step">9. email.service</span> — nodemailer transport + template<br>
+    <span class="step">10. dailyPipeline.js</span> — wire all steps<br>
+    <span class="step">11. test end-to-end</span> — manual trigger, verify email
+  </div>
+</div>
+
+<footer>daily digest — implementation spec v3 — entity_key + manual macro groups</footer>
+</div>
+</body>
+</html>
