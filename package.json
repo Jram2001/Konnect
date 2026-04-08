@@ -10,7 +10,7 @@
     "axios": "^1.14.0",
     "cookie-parser": "~1.4.4",
     "debug": "~2.6.9",
-    "dotenv": "^17.4.0",
+    "dotenv": "^17.4.1",
     "express": "^4.22.1",
     "http-errors": "~1.6.3",
     "mongoose": "^9.4.1",
