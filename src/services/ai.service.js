@@ -1,6 +1,8 @@
-const Anthropic = require("@anthropic-ai/sdk");
+const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-const client = new Anthropic();
+// Initialize Gemini Client
+// Make sure GEMINI_API_KEY is in your environment variables
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const EXTRACTION_SYSTEM_PROMPT = `Extract entities and events from news articles. Return a JSON array.
 
@@ -14,22 +16,20 @@ Each item:
 - is_macro: true if event affects entire sector/industry
 - article_index: which article (0-based) this extraction came from
 
-JSON array only. No markdown. Empty array if nothing found.`;
+Return a JSON array only. Empty array if nothing found.`;
 
 const MOOD_SYSTEM_PROMPT = `Write an email subject and mood summary for a daily market digest.
 
 Given events with entity names and scores, return JSON:
 { "subject_line": "under 60 chars, punchy, no emojis", "mood_summary": "one casual sentence" }
 
-JSON only. No markdown.`;
+Return JSON only.`;
 
-const BATCH_SIZE = 5;
-
+const BATCH_SIZE = 10;
+const MODEL_NAME = "gemini-3.1-flash-lite-preview";
 const aiService = {
   /**
    * Format multiple articles into a single prompt.
-   * @param {Array<Object>} articles - Array of { title, body }
-   * @returns {string}
    */
   buildBatchPrompt(articles) {
     return articles
@@ -41,20 +41,13 @@ const aiService = {
   },
 
   /**
-   * Parse and validate extraction JSON from Claude.
-   * @param {string} text - Raw response
-   * @returns {Array<Object>}
+   * Parse and validate extraction JSON from Gemini.
    */
   parseAIResponse(text) {
-    const cleaned = text
-      .trim()
-      .replace(/^```json\s*/, "")
-      .replace(/```\s*$/, "")
-      .trim();
-
     let parsed;
     try {
-      parsed = JSON.parse(cleaned);
+      // Gemini's JSON mode returns a raw string without markdown blocks
+      parsed = JSON.parse(text);
     } catch (err) {
       console.error("AI parse error:", err.message);
       return [];
@@ -97,8 +90,6 @@ const aiService = {
 
   /**
    * Extract entities/events from a single article.
-   * @param {Object} article - { title, body, source_url }
-   * @returns {Promise<Array<Object>>}
    */
   async extractFromArticle(article) {
     const results = await this.extractFromArticles([article]);
@@ -107,35 +98,32 @@ const aiService = {
 
   /**
    * Extract entities/events from multiple articles in one API call.
-   * Batches into groups of BATCH_SIZE to stay within token limits.
-   * Returns array of arrays — one per article in input order.
-   *
-   * @param {Array<Object>} articles - Array of { title, body, source_url }
-   * @returns {Promise<Array<Array<Object>>>}
    */
   async extractFromArticles(articles) {
     if (!articles || articles.length === 0) return [];
 
     const results = new Array(articles.length).fill(null).map(() => []);
 
-    // process in batches
+    // Initialize the model with system instructions and JSON mode
+    const model = genAI.getGenerativeModel({
+      model: MODEL_NAME,
+      systemInstruction: EXTRACTION_SYSTEM_PROMPT,
+      generationConfig: {
+        responseMimeType: "application/json",
+      },
+    });
+
     for (let i = 0; i < articles.length; i += BATCH_SIZE) {
       const batch = articles.slice(i, i + BATCH_SIZE);
       const batchOffset = i;
 
       try {
         const userMessage = this.buildBatchPrompt(batch);
+        const result = await model.generateContent(userMessage);
+        const responseText = result.response.text();
 
-        const response = await client.messages.create({
-          model: "claude-haiku-4-5-20251001",
-          max_tokens: 4096,
-          system: EXTRACTION_SYSTEM_PROMPT,
-          messages: [{ role: "user", content: userMessage }],
-        });
+        const extractions = this.parseAIResponse(responseText);
 
-        const extractions = this.parseAIResponse(response.content[0].text);
-
-        // distribute extractions back to their source articles
         for (const ext of extractions) {
           const localIndex = ext.article_index;
           const globalIndex = batchOffset + localIndex;
@@ -150,19 +138,14 @@ const aiService = {
           `Batch extraction error (articles ${batchOffset}-${batchOffset + batch.length - 1}):`,
           error.message
         );
-        // batch fails = those articles get empty results, pipeline continues
       }
     }
-
+    await new Promise(r => setTimeout(r, 6000));
     return results;
   },
 
   /**
    * Generate mood summary + subject line from matched events.
-   * One call per user — not batched (personalized output).
-   *
-   * @param {Array<Object>} events - [{ display_name, event_text, impact_score }]
-   * @returns {Promise<Object>} - { subject_line, mood_summary }
    */
   async composeMoodSummary(events) {
     if (!events || events.length === 0) {
@@ -180,29 +163,20 @@ const aiService = {
         )
         .join("\n");
 
-      const response = await client.messages.create({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 256,
-        system: MOOD_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: eventLines }],
+      const model = genAI.getGenerativeModel({
+        model: MODEL_NAME,
+        systemInstruction: MOOD_SYSTEM_PROMPT,
+        generationConfig: {
+          responseMimeType: "application/json",
+        },
       });
 
-      const text = response.content[0].text
-        .trim()
-        .replace(/^```json\s*/, "")
-        .replace(/```\s*$/, "")
-        .trim();
-
-      const parsed = JSON.parse(text);
+      const result = await model.generateContent(eventLines);
+      const parsed = JSON.parse(result.response.text());
 
       return {
-        subject_line: String(parsed.subject_line || "Your daily digest").slice(
-          0,
-          80
-        ),
-        mood_summary: String(
-          parsed.mood_summary || "Here's what happened today."
-        ),
+        subject_line: String(parsed.subject_line || "Your daily digest").slice(0, 80),
+        mood_summary: String(parsed.mood_summary || "Here's what happened today."),
       };
     } catch (error) {
       console.error("Mood summary error:", error.message);

@@ -36,7 +36,7 @@ const entityService = {
                 { "display_name": display_name },
                 {
                     upsert : true,
-                    new : true,
+                    returnDocument : false,
                     setDefaultsOnInsert: true
                 }
             );
@@ -79,7 +79,7 @@ const entityService = {
             const result = await Entity.findOneAndUpdate(
                 { "entity_key": entity_key },
                 { $addToSet: { macro_group_keys: group_key } },
-                { new : true }
+                { returnDocument : false }
             );
             return result;
         } catch(error){
@@ -107,7 +107,7 @@ const entityService = {
             const result  = await Entity.findOneAndUpdate(
                 { "entity_key": entity_key },
                 { $pull: { macro_group_keys: group_key } },
-                { new : true }
+                { returnDocument : false }
             );
             return result; 
         } catch(error){

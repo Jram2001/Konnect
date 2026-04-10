@@ -14,6 +14,7 @@ async function step1_ingest() {
 
   let totalStored = 0;
   let nextPage = null;
+  const ARTICLE_LIMIT = 100;
 
   do {
     const { articles, nextPage: next } = await newsService.fetchTodaysNews({
@@ -25,7 +26,12 @@ async function step1_ingest() {
     const fresh = await newsService.deduplicateArticles(articles);
     const stored = await newsService.storeArticles(fresh);
     totalStored += stored.length;
-  } while (nextPage);
+
+    if (nextPage && totalStored < ARTICLE_LIMIT) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
+  } while (nextPage && totalStored < ARTICLE_LIMIT);
 
   console.log(`[Pipeline] Step 1 — Ingest: ${totalStored} new articles stored`);
   return totalStored;
@@ -45,17 +51,19 @@ async function step2_process() {
 
   let totalConnections = 0;
 
-  for (const article of articles) {
-    try {
-      const extractions = await aiService.extractFromArticle(article);
+  // extract all at once using batching
+  const allExtractions = await aiService.extractFromArticles(articles);
 
+  for (let i = 0; i < articles.length; i++) {
+    const article = articles[i];
+    const extractions = allExtractions[i] || [];
+
+    try {
       if (extractions.length > 0) {
-        // upsert each entity
         for (const ext of extractions) {
           await entityService.upsertEntity(ext.entity_key, ext.display_name);
         }
 
-        // bulk insert connections
         const connectionDocs = extractions.map((ext) => ({
           entity_key: ext.entity_key,
           display_name: ext.display_name,
@@ -73,16 +81,11 @@ async function step2_process() {
 
       await newsService.markAsProcessed(article._id);
     } catch (error) {
-      console.error(
-        `[Pipeline] Step 2 — Process: error on article ${article._id}:`,
-        error.message
-      );
+      console.error(`[Pipeline] Step 2 — Process: error on article ${article._id}:`, error.message);
     }
   }
 
-  console.log(
-    `[Pipeline] Step 2 — Process: ${articles.length} articles processed, ${totalConnections} connections created`
-  );
+  console.log(`[Pipeline] Step 2 — Process: ${articles.length} articles processed, ${totalConnections} connections created`);
   return totalConnections;
 }
 

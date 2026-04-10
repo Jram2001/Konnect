@@ -17,24 +17,35 @@ const NEWSDATA_BASE_URL = "https://newsdata.io/api/1/latest";
 async function fetchTodaysNews(opts = {}) {
   const params = {
     apikey: NEWSDATA_API_KEY,
-    language: opts.language || "en",
+    language: "en",
+    q: "India OR BSE OR NSE OR RBI OR rupee OR oil OR tariff OR \"Fed rate\"",
+    category: "business",
+    country: "in",
   };
   if (opts.query) params.q = opts.query;
   if (opts.category) params.category = opts.category;
   if (opts.nextPage) params.page = opts.nextPage;
 
-  const { data } = await axios.get(NEWSDATA_BASE_URL, { params });
+  try {
+    const { data } = await axios.get(NEWSDATA_BASE_URL, { params });
 
-  const articles = (data.results || []).map((item) => ({
-    title: item.title || "",
-    body: item.description || item.content || "",
-    source_url: item.link || "",
-    published_at: item.pubDate ? new Date(item.pubDate) : new Date(),
-  }));
+    const articles = (data.results || []).map((item) => ({
+      title: item.title || "",
+      body: item.description || item.content || "",
+      source_url: item.link || "",
+      published_at: item.pubDate ? new Date(item.pubDate) : new Date(),
+    }));
 
-  return { articles, nextPage: data.nextPage || null };
+    return { articles, nextPage: data.nextPage || null };
+  } catch (err) {
+    console.error("[NewsService] fetchTodaysNews error:", {
+      status: err.response?.status,
+      message: err.response?.data?.message || err.message,
+      data: err.response?.data,
+    });
+    throw err;
+  }
 }
-
 /**
  * Generate a SHA-256 hash for a URL to use as a dedup key.
  * @param {string} url
@@ -99,6 +110,8 @@ async function storeArticles(articles) {
 async function getUnprocessedArticles() {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
+  
+  startOfDay.setMinutes(startOfDay.getMinutes() - 330);
 
   return Article.find({
     is_processed: false,

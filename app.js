@@ -10,6 +10,8 @@ var userApiRouter = require('./src/routes/user.routes');
 var entityApiRouter = require('./src/routes/entity.routes');
 var macroGroupApiRouter = require('./src/routes/macroGroup.routes');
 var digestApiRouter = require('./src/routes/digest.routes');
+const router = express.Router();
+const { runPipeline } = require("./src/jobs/dailyPipeline");
 var mongoose = require('mongoose');
 const connectDB = require("./src/config/db");
 var app = express();
@@ -30,6 +32,15 @@ app.use('/api/users', userApiRouter);
 app.use('/api/entities', entityApiRouter);
 app.use('/api/macro-groups', macroGroupApiRouter);
 app.use('/api/digests', digestApiRouter);
+app.get("/trigger-pipeline", async (req, res) => {
+  try {
+    res.json({ message: "Pipeline started" });
+    runPipeline(); 
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
