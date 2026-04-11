@@ -10,12 +10,18 @@ var userApiRouter = require('./src/routes/user.routes');
 var entityApiRouter = require('./src/routes/entity.routes');
 var macroGroupApiRouter = require('./src/routes/macroGroup.routes');
 var digestApiRouter = require('./src/routes/digest.routes');
-const router = express.Router();
 const { runPipeline } = require("./src/jobs/dailyPipeline");
 var mongoose = require('mongoose');
 const connectDB = require("./src/config/db");
+const rateLimit = require("express-rate-limit");
 var app = express();
-
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many signup attempts. Try again in an hour." },
+});
 mongoose.connect(process?.env?.MONGODB_URI);
 connectDB().then(() => {
   console.log("App is ready to run!");
@@ -32,6 +38,9 @@ app.use('/api/users', userApiRouter);
 app.use('/api/entities', entityApiRouter);
 app.use('/api/macro-groups', macroGroupApiRouter);
 app.use('/api/digests', digestApiRouter);
+app.get("/signup", signupLimiter ,(req, res) => {
+  res.sendFile(path.join(__dirname, "public/signup.html"));
+});
 app.get("/trigger-pipeline", async (req, res) => {
   try {
     res.json({ message: "Pipeline started" });
@@ -42,20 +51,14 @@ app.get("/trigger-pipeline", async (req, res) => {
 });
 
 
-// catch 404 and forward to error handler
+// catch 404
 app.use(function(req, res, next) {
-  next(createError(404));
+  res.status(404).json({ error: "Not found" });
 });
 
 // error handler
 app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
-
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
+  console.error(err.message);
+  res.status(err.status || 500).json({ error: err.message || "Internal server error" });
 });
-
 module.exports = app;

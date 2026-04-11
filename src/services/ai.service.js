@@ -186,6 +186,76 @@ const aiService = {
       };
     }
   },
+
+/**
+   * Single Gemini call: normalize free text watchlist + assign macro groups.
+   * @param {string} freeText - user input like "I want to track Reliance, gold, RBI"
+   * @param {Array<{group_key: string, display_name: string}>} macroGroups - all 30 seeded groups
+   * @returns {Promise<Array<{entity_key: string, display_name: string, macro_group_keys: string[]}>>}
+   */
+  async normalizeAndAssignWatchlist(freeText, macroGroups) {
+    if (!freeText || !freeText.trim()) return [];
+
+    const groupList = macroGroups
+      .map(g => `${g.group_key} — ${g.display_name}`)
+      .join("\n");
+
+    const systemPrompt = `You normalize user watchlist text into entities and assign macro groups.
+      Given free text describing what the user wants to track, return a JSON array (max 5 items):
+      [{
+        "entity_key": "lowercase name_type (e.g. reliance_company, gold_commodity, rbi_organization)",
+        "display_name": "Human Readable Name",
+        "macro_group_keys": ["matching_group_key_1"]
+      }]
+
+      entity_key rules:
+      - lowercase, format: name_type
+      - types: company, person, commodity, organization, sector, index, currency
+      - normalize aliases: "Reliance", "RIL", "Reliance Industries" → "reliance_company"
+      - disambiguate: "Tesla" company vs "Tesla" person
+
+      macro_group_keys rules:
+      - pick ONLY from the approved list below
+      - assign all relevant groups per entity (usually 1-3)
+      - empty array if no group fits
+
+      APPROVED MACRO GROUPS:
+      ${groupList}
+
+      Return JSON array only. Max 5 entities.`;
+
+    try {
+      const model = genAI.getGenerativeModel({
+        model: MODEL_NAME,
+        systemInstruction: systemPrompt,
+        generationConfig: {
+          responseMimeType: "application/json",
+        },
+      });
+
+      const result = await model.generateContent(freeText.trim());
+      const parsed = JSON.parse(result.response.text());
+
+      if (!Array.isArray(parsed)) return [];
+
+      const validGroupKeys = new Set(macroGroups.map(g => g.group_key));
+
+      console.log('Normalization complete');
+      return parsed
+        .filter(item => item.entity_key && item.display_name)
+        .slice(0, 5)
+        .map(item => ({
+          entity_key: String(item.entity_key).toLowerCase().trim(),
+          display_name: String(item.display_name).trim(),
+          macro_group_keys: Array.isArray(item.macro_group_keys)
+            ? item.macro_group_keys.filter(k => validGroupKeys.has(k))
+            : [],
+        }));
+    } catch (error) {
+      console.error("normalizeAndAssignWatchlist error:", error.message);
+      return [];
+    }
+  },
 };
 
 module.exports = aiService;

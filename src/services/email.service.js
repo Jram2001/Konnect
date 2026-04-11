@@ -55,6 +55,71 @@ function renderItem(item) {
     </tr>`;
 }
 
+/**
+ * Build welcome email HTML showing confirmed watchlist entities.
+ * @param {Array<{entity_key: string, display_name: string}>} watchlist
+ * @returns {string} HTML string
+ */
+function buildWelcomeHtml(watchlist) {
+  const entityRows = watchlist
+    .map(
+      (e) => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #2a2a2a;">
+        <div style="font-size:14px;font-weight:600;color:#ffffff;">${e.display_name}</div>
+        <div style="font-size:11px;color:#4b5563;margin-top:2px;">${e.entity_key}</div>
+      </td>
+    </tr>`
+    )
+    .join("");
+
+  return `<!DOCTYPE html>
+  <html lang="en">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+  <body style="margin:0;padding:0;background:#0f0f0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#0f0f0f;padding:32px 0;">
+      <tr><td align="center">
+        <table width="580" cellpadding="0" cellspacing="0" style="background:#1a1a1a;border-radius:12px;overflow:hidden;">
+
+          <!-- Header -->
+          <tr>
+            <td style="padding:28px 32px;border-bottom:1px solid #2a2a2a;">
+              <div style="font-size:11px;font-weight:600;color:#6b7280;letter-spacing:2px;text-transform:uppercase;">KONNECT</div>
+              <div style="font-size:22px;font-weight:700;color:#ffffff;margin-top:6px;">Welcome aboard</div>
+            </td>
+          </tr>
+
+          <!-- Message -->
+          <tr>
+            <td style="padding:24px 32px;border-bottom:1px solid #2a2a2a;">
+              <div style="font-size:14px;color:#d1d5db;line-height:1.7;">You're in. Every morning at 6 AM, you'll get a digest covering what matters across your watchlist.</div>
+            </td>
+          </tr>
+
+          <!-- Watchlist -->
+          <tr>
+            <td style="padding:24px 32px;">
+              <div style="font-size:10px;font-weight:700;letter-spacing:2px;color:#4b5563;text-transform:uppercase;margin-bottom:12px;">Your Watchlist</div>
+              <table width="100%" cellpadding="0" cellspacing="0">
+                ${entityRows}
+              </table>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:20px 32px;border-top:1px solid #2a2a2a;">
+              <div style="font-size:11px;color:#4b5563;text-align:center;">Your first digest arrives tomorrow morning · Konnect</div>
+            </td>
+          </tr>
+
+        </table>
+      </td></tr>
+    </table>
+  </body>
+  </html>`;
+}
+
 function renderSection(title, items) {
   if (!items.length) return "";
   const rows = items.map(renderItem).join("");
@@ -159,6 +224,33 @@ const emailService = {
         `Service Error [sendDigestEmail] user=${user?.email}:`,
         error.message
       );
+      throw error;
+    }
+  },
+
+  /**
+   * Send welcome email with confirmed watchlist.
+   * @param {Object} user - needs `email`
+   * @param {Array<{entity_key: string, display_name: string}>} watchlist
+   * @returns {Promise<Object>} nodemailer send result
+   */
+  async sendWelcomeEmail(user, watchlist) {
+    try {
+      if (!user?.email) throw new Error("user.email is required");
+
+      const html = buildWelcomeHtml(watchlist);
+
+      const result = await transport.sendMail({
+        from: FROM_ADDRESS,
+        to: user.email,
+        subject: "Welcome to Konnect — your watchlist is set",
+        html,
+      });
+
+      console.log(`Welcome email sent to ${user.email} (messageId: ${result.messageId})`);
+      return result;
+    } catch (error) {
+      console.error(`Service Error [sendWelcomeEmail] user=${user?.email}:`, error.message);
       throw error;
     }
   },

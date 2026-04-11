@@ -17,8 +17,9 @@ const userSchema = new mongoose.Schema({
     trim: true,
   },
   is_active: { type: Boolean, default: true },
-  watchlist: { type: [watchlistItemSchema], default: [] },
+  watchlist: { type: [watchlistItemSchema], default: [] },         
   created_at: { type: Date, default: Date.now },
+  signup_ip: { type: String, index: true, default: null }
 });
 
 userSchema.index({ "watchlist.entity_key": 1 });

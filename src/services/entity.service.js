@@ -2,11 +2,7 @@ const Entity = require('../models/entity.model');
 const mongoose = require('mongoose');
 
 const entityService = {
-  
-    /**
-     * @param {string} entity_key - The unique key for the entity
-     * @returns {Promise<Object>} - The entity found based on entity_key
-     */
+
     async getEntityByKey(entity_key){
         try {
             if(!entity_key){
@@ -21,22 +17,31 @@ const entityService = {
     },
 
     /**
-     * @param {string} entity_key - The unique key for the entity
-     * @param {string} display_name - The display name to associate with the entity
-     * @returns {Promise<Object>} - The updated or created entity
+     * @param {string} entity_key
+     * @param {string} display_name
+     * @param {string[]} [macro_group_keys] - optional, sets groups on insert, merges on update
+     * @returns {Promise<Object>} - the updated/created entity
      */
-    async upsertEntity(entity_key, display_name){
+    async upsertEntity(entity_key, display_name, macro_group_keys = []){
         try{
             if(!entity_key || !display_name){
                 throw new Error ('Invalid entity format');
             }
-            const filter  = { "entity_key": entity_key };
-            const result  = await Entity.findOneAndUpdate(
-                filter,
-                { "display_name": display_name },
+
+            const update = { display_name };
+
+            if(macro_group_keys.length > 0){
+                update.$addToSet = { macro_group_keys: { $each: macro_group_keys } };
+            }
+
+            const result = await Entity.findOneAndUpdate(
+                { entity_key },
+                macro_group_keys.length > 0
+                    ? { display_name, $addToSet: { macro_group_keys: { $each: macro_group_keys } } }
+                    : { display_name },
                 {
-                    upsert : true,
-                    returnDocument : false,
+                    upsert: true,
+                    new: true,
                     setDefaultsOnInsert: true
                 }
             );
@@ -48,8 +53,26 @@ const entityService = {
     },
 
     /**
-     * @returns {Promise<Array<Object>>} - List of all entities sorted by entity_key
+     * Bulk upsert from the combined Gemini normalize+assign response.
+     * @param {Array<{entity_key: string, display_name: string, macro_group_keys: string[]}>} entities
+     * @returns {Promise<Array<Object>>} - all upserted entity docs
      */
+    async bulkUpsertEntities(entities){
+        try{
+            if(!Array.isArray(entities) || entities.length === 0){
+                throw new Error('Entities array is required');
+            }
+
+            const results = await Promise.all(
+                entities.map(e => this.upsertEntity(e.entity_key, e.display_name, e.macro_group_keys || []))
+            );
+            return results;
+        } catch(error){
+            console.error("Service Error [bulkUpsertEntities]:", error.message);
+            throw error;
+        }
+    },
+
     async getAllEntities(){
         try{
             const result  = await Entity.find({}).sort({ entity_key: 1 });
@@ -60,11 +83,6 @@ const entityService = {
         }
     },
 
-    /**
-     * @param {string} entity_key - The unique key for the entity
-     * @param {string} group_key - The group key to assign to the entity
-     * @returns {Promise<Object>} - The updated entity with the assigned group
-     */
     async assignMacroGroup(entity_key, group_key){
         try{      
             if(!entity_key || !group_key){
@@ -79,7 +97,7 @@ const entityService = {
             const result = await Entity.findOneAndUpdate(
                 { "entity_key": entity_key },
                 { $addToSet: { macro_group_keys: group_key } },
-                { returnDocument : false }
+                { new: true }
             );
             return result;
         } catch(error){
@@ -88,11 +106,6 @@ const entityService = {
         }
     },
 
-    /**
-     * @param {string} entity_key - The unique key for the entity
-     * @param {string} group_key - The group key to remove from the entity
-     * @returns {Promise<Object>} - The updated entity with the removed group
-     */
     async removeMacroGroup(entity_key, group_key){
         try{
             if(!entity_key || !group_key){
@@ -107,7 +120,7 @@ const entityService = {
             const result  = await Entity.findOneAndUpdate(
                 { "entity_key": entity_key },
                 { $pull: { macro_group_keys: group_key } },
-                { returnDocument : false }
+                { new: true }
             );
             return result; 
         } catch(error){
