@@ -5,6 +5,8 @@ const entityService = require("../services/entity.service");
 const digestService = require("../services/digest.service");
 const emailService = require("../services/email.service");
 const { User, Connection, Digest } = require("../models");
+const MacroGroup = require("../models/macrogroup.model");
+const Entity = require("../models/entity.model");
 
 // ─── Step 1: Ingest ────────────────────────────────────────────────
 // fetch → dedup → store articles
@@ -51,15 +53,21 @@ async function step2_process() {
 
   let totalConnections = 0;
 
-  // extract all at once using batching
+  // Build fuzzy index once for the entire run
+  const fuseIndex = await entityService.buildEntityIndex();
+
+  // Extract all at once using batching
   const allExtractions = await aiService.extractFromArticles(articles);
 
   for (let i = 0; i < articles.length; i++) {
     const article = articles[i];
-    const extractions = allExtractions[i] || [];
+    let extractions = allExtractions[i] || [];
 
     try {
       if (extractions.length > 0) {
+        // Resolve against existing entities: fuzzy filter → Gemini judge
+        extractions = await aiService.resolveExtractedEntities(extractions, fuseIndex);
+
         for (const ext of extractions) {
           await entityService.upsertEntity(ext.entity_key, ext.display_name);
         }
@@ -158,6 +166,48 @@ async function step4_deliver() {
   return delivered;
 }
 
+// ─── Step 2b: Assign Macro Groups ──────────────────────────────────
+async function step2b_assignMacroGroups() {
+  console.log("[Pipeline] Step 2b — Assign Macro Groups: starting");
+
+  const unassigned = await Entity.find(
+    { $or: [{ macro_group_keys: { $size: 0 } }, { macro_group_keys: { $exists: false } }] },
+    "entity_key display_name"
+  ).lean();
+
+  if (unassigned.length === 0) {
+    console.log("[Pipeline] Step 2b — Assign Macro Groups: all entities assigned");
+    return 0;
+  }
+
+  const macroGroups = await MacroGroup.find({}).lean();
+
+  // Batch in chunks of 50 to avoid prompt size issues
+  let totalAssigned = 0;
+
+  for (let i = 0; i < unassigned.length; i += 50) {
+    const batch = unassigned.slice(i, i + 50);
+    const assignments = await aiService.assignMacroGroupsBatch(batch, macroGroups);
+
+    for (const a of assignments) {
+      if (a.macro_group_keys.length > 0) {
+        await Entity.findOneAndUpdate(
+          { entity_key: a.entity_key },
+          { $addToSet: { macro_group_keys: { $each: a.macro_group_keys } } }
+        );
+        totalAssigned++;
+      }
+    }
+
+    if (i + 50 < unassigned.length) {
+      await new Promise(r => setTimeout(r, 6000));
+    }
+  }
+
+  console.log(`[Pipeline] Step 2b — Assign Macro Groups: ${totalAssigned}/${unassigned.length} entities assigned`);
+  return totalAssigned;
+}
+
 // ─── Orchestrator ──────────────────────────────────────────────────
 
 async function runPipeline() {
@@ -168,6 +218,7 @@ async function runPipeline() {
   try {
     await step1_ingest();
     await step2_process();
+    await step2b_assignMacroGroups();
     await step3_compose();
     await step4_deliver();
   } catch (error) {
@@ -194,6 +245,7 @@ module.exports = {
   schedulePipeline,
   step1_ingest,
   step2_process,
+  step2b_assignMacroGroups,
   step3_compose,
   step4_deliver,
 };

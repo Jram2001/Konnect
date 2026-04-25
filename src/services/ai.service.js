@@ -1,4 +1,6 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const Fuse = require("fuse.js");
+const Entity = require("../models/entity.model");
 
 // Initialize Gemini Client
 // Make sure GEMINI_API_KEY is in your environment variables
@@ -187,50 +189,118 @@ const aiService = {
     }
   },
 
-/**
-   * Single Gemini call: normalize free text watchlist + assign macro groups.
-   * @param {string} freeText - user input like "I want to track Reliance, gold, RBI"
-   * @param {Array<{group_key: string, display_name: string}>} macroGroups - all 30 seeded groups
-   * @returns {Promise<Array<{entity_key: string, display_name: string, macro_group_keys: string[]}>>}
-   */
+  /**
+     * Single Gemini call: normalize free text watchlist + assign macro groups.
+     * Fuzzy-matches terms against existing entities first; sends candidates to
+     * Gemini so it can reuse them instead of always creating new keys.
+     *
+     * @param {string} freeText - user input like "Reliance, gold, Chinese telecom"
+     * @param {Array<{group_key: string, display_name: string}>} macroGroups
+     * @returns {Promise<Array<{entity_key: string, display_name: string, macro_group_keys: string[]}>>}
+     */
   async normalizeAndAssignWatchlist(freeText, macroGroups) {
     if (!freeText || !freeText.trim()) return [];
 
+    // ── Step 1: fetch existing entities (key + name only) ──────────────────
+    const existingEntities = await Entity.find(
+      {},
+      { entity_key: 1, display_name: 1, _id: 0 }
+    ).lean();
+
+    // ── Step 2: split free text into individual terms ───────────────────────
+    const terms = freeText
+      .split(/[,\n]+/)
+      .map(t => t.trim())
+      .filter(Boolean);
+
+    // ── Step 3: fuzzy match each term against existing entities ─────────────
+    const candidateMap = {}; // term → [{entity_key, display_name, score}]
+    const freshTerms = [];
+
+    if (existingEntities.length > 0) {
+      const fuse = new Fuse(existingEntities, {
+        keys: ["display_name"],
+        includeScore: true,
+        threshold: 0.5, // only returns items with score ≤ 0.5
+      });
+
+      for (const term of terms) {
+        const hits = fuse.search(term).slice(0, 5);
+        const candidates = hits.map(h => ({
+          entity_key: h.item.entity_key,
+          display_name: h.item.display_name,
+          score: Math.round((1 - h.score) * 100), // convert to % match
+        }));
+
+        if (candidates.length > 0) {
+          candidateMap[term] = candidates;
+        } else {
+          freshTerms.push(term);
+        }
+      }
+    } else {
+      // No existing entities — all terms are fresh
+      freshTerms.push(...terms);
+    }
+
+    // ── Step 4: build the dynamic Gemini prompt ─────────────────────────────
     const groupList = macroGroups
       .map(g => `${g.group_key} — ${g.display_name}`)
       .join("\n");
 
+    const candidateBlock = Object.entries(candidateMap)
+      .map(([term, candidates]) => {
+        const lines = candidates
+          .map(c => `  - ${c.entity_key} (${c.display_name}) [${c.score}% match]`)
+          .join("\n");
+        return `Term: "${term}"\n${lines}`;
+      })
+      .join("\n\n");
+
+    const freshBlock = freshTerms.map(t => `- ${t}`).join("\n");
+
     const systemPrompt = `You normalize user watchlist text into entities and assign macro groups.
-      Given free text describing what the user wants to track, return a JSON array (max 5 items):
-      [{
-        "entity_key": "lowercase name_type (e.g. reliance_company, gold_commodity, rbi_organization)",
-        "display_name": "Human Readable Name",
-        "macro_group_keys": ["matching_group_key_1"]
-      }]
 
-      entity_key rules:
-      - lowercase, format: name_type
-      - types: company, person, commodity, organization, sector, index, currency
-      - normalize aliases: "Reliance", "RIL", "Reliance Industries" → "reliance_company"
-      - disambiguate: "Tesla" company vs "Tesla" person
+For each input term, return a JSON array (max 5 items total):
+[{
+  "entity_key": "lowercase_name_type",
+  "display_name": "Human Readable Name",
+  "macro_group_keys": ["matching_group_key"]
+}]
 
-      macro_group_keys rules:
-      - pick ONLY from the approved list below
-      - assign all relevant groups per entity (usually 1-3)
-      - empty array if no group fits
+entity_key rules:
+- lowercase, format: name_type
+- types: company, person, commodity, organization, sector, index, currency
+- normalize aliases: 'Reliance', 'RIL', 'Reliance Industries' → 'reliance_company'
+- disambiguate: 'Tesla' company vs 'Tesla' person
 
-      APPROVED MACRO GROUPS:
-      ${groupList}
+CANDIDATE MATCHING RULES:
+- For terms that have EXISTING CANDIDATES listed below, pick the best match if it represents the same entity
+- If none of the candidates are a good match, create a new entity_key
+- For terms with NO CANDIDATES, create a fresh entity_key
 
-      Return JSON array only. Max 5 entities.`;
+--- TERMS WITH EXISTING CANDIDATES ---
+${candidateBlock || "(none)"}
 
+--- TERMS WITH NO EXISTING MATCH ---
+${freshBlock || "(none)"}
+
+macro_group_keys rules:
+- pick ONLY from the approved list below
+- assign all relevant groups per entity (usually 1-3)
+- empty array if no group fits
+
+APPROVED MACRO GROUPS:
+${groupList}
+
+Return JSON array only. Max 5 entities.`;
+
+    // ── Step 5: single Gemini call ──────────────────────────────────────────
     try {
       const model = genAI.getGenerativeModel({
         model: MODEL_NAME,
         systemInstruction: systemPrompt,
-        generationConfig: {
-          responseMimeType: "application/json",
-        },
+        generationConfig: { responseMimeType: "application/json" },
       });
 
       const result = await model.generateContent(freeText.trim());
@@ -240,7 +310,7 @@ const aiService = {
 
       const validGroupKeys = new Set(macroGroups.map(g => g.group_key));
 
-      console.log('Normalization complete');
+      console.log("Normalization complete");
       return parsed
         .filter(item => item.entity_key && item.display_name)
         .slice(0, 5)
@@ -253,6 +323,182 @@ const aiService = {
         }));
     } catch (error) {
       console.error("normalizeAndAssignWatchlist error:", error.message);
+      return [];
+    }
+  },
+
+
+  /**
+     * Resolve extracted entities against existing ones using fuzzy + Gemini.
+     * For each extraction, fuzzy match against existing entities.
+     * If candidates found (>50%), ask Gemini to pick the best match or confirm it's new.
+     * If no candidates, keep the original key.
+     *
+     * @param {Array<Object>} extractions - flat array of parsed extractions
+     * @param {Fuse} fuseIndex - pre-built fuse instance from existing entities
+     * @returns {Promise<Array<Object>>} extractions with resolved entity_keys
+     */
+  async resolveExtractedEntities(extractions, fuseIndex) {
+    if (!fuseIndex || !extractions || extractions.length === 0) return extractions;
+
+    // Group extractions by entity_key to avoid resolving the same key multiple times
+    const uniqueKeys = {};
+    for (const ext of extractions) {
+      if (!uniqueKeys[ext.entity_key]) {
+        uniqueKeys[ext.entity_key] = ext.display_name;
+      }
+    }
+
+    // Fuzzy match each unique key
+    const toResolve = []; // {original_key, display_name, candidates[]}
+    const alreadyResolved = {}; // original_key → resolved {entity_key, display_name}
+
+    for (const [key, displayName] of Object.entries(uniqueKeys)) {
+      const hits = fuseIndex.search(displayName).slice(0, 5);
+      const candidates = hits
+        .filter(h => (1 - h.score) >= 0.5)
+        .map(h => ({
+          entity_key: h.item.entity_key,
+          display_name: h.item.display_name,
+          score: Math.round((1 - h.score) * 100),
+        }));
+
+      // Exact key match — no need to resolve
+      if (candidates.some(c => c.entity_key === key)) {
+        alreadyResolved[key] = { entity_key: key, display_name: displayName };
+      } else if (candidates.length > 0) {
+        toResolve.push({ original_key: key, display_name: displayName, candidates });
+      } else {
+        alreadyResolved[key] = { entity_key: key, display_name: displayName };
+      }
+    }
+
+    // If nothing needs resolving, return as-is
+    if (toResolve.length === 0) return extractions;
+
+    // Build Gemini prompt for batch resolution
+    const resolveBlock = toResolve
+      .map(r => {
+        const candidateLines = r.candidates
+          .map(c => `  - ${c.entity_key} (${c.display_name}) [${c.score}%]`)
+          .join("\n");
+        return `New: "${r.display_name}" (${r.original_key})\nExisting candidates:\n${candidateLines}`;
+      })
+      .join("\n\n");
+
+    const systemPrompt = `You resolve entity duplicates. For each "New" entity below, decide:
+- If an existing candidate is the SAME entity, return the existing entity_key and display_name
+- If none match (different entity), return the new entity_key and display_name
+
+Return a JSON array:
+[{ "original_key": "the_new_key", "resolved_key": "picked_key", "resolved_name": "Picked Name" }]
+
+Return JSON array only.`;
+
+    try {
+      const model = genAI.getGenerativeModel({
+        model: MODEL_NAME,
+        systemInstruction: systemPrompt,
+        generationConfig: { responseMimeType: "application/json" },
+      });
+
+      const result = await model.generateContent(resolveBlock);
+      const parsed = JSON.parse(result.response.text());
+
+      if (Array.isArray(parsed)) {
+        for (const r of parsed) {
+          if (r.original_key && r.resolved_key) {
+            alreadyResolved[r.original_key] = {
+              entity_key: String(r.resolved_key).toLowerCase().trim(),
+              display_name: String(r.resolved_name || r.resolved_key).trim(),
+            };
+          }
+        }
+      }
+    } catch (error) {
+      console.error("resolveExtractedEntities error:", error.message);
+      // On failure, keep original keys — don't block the pipeline
+    }
+
+    // Fill in any unresolved keys (Gemini might have missed some)
+    for (const r of toResolve) {
+      if (!alreadyResolved[r.original_key]) {
+        alreadyResolved[r.original_key] = {
+          entity_key: r.original_key,
+          display_name: r.display_name,
+        };
+      }
+    }
+
+    // Apply resolutions to all extractions
+    return extractions.map(ext => {
+      const resolved = alreadyResolved[ext.entity_key];
+      if (resolved) {
+        return { ...ext, entity_key: resolved.entity_key, display_name: resolved.display_name };
+      }
+      return ext;
+    });
+  },
+
+
+
+  /**
+     * Assign macro groups to entities that don't have any.
+     * Single Gemini call: send all unassigned entities + full macro group list.
+     *
+     * @param {Array<{entity_key: string, display_name: string}>} entities - entities without macro groups
+     * @param {Array<{group_key: string, display_name: string, description: string}>} macroGroups - all 30 groups
+     * @returns {Promise<Array<{entity_key: string, macro_group_keys: string[]}>>}
+     */
+  async assignMacroGroupsBatch(entities, macroGroups) {
+    if (!entities || entities.length === 0) return [];
+
+    const groupList = macroGroups
+      .map(g => `${g.group_key} — ${g.display_name}: ${g.description}`)
+      .join("\n");
+
+    const entityList = entities
+      .map(e => `- ${e.entity_key} (${e.display_name})`)
+      .join("\n");
+
+    const systemPrompt = `You assign macro groups to entities.
+
+For each entity below, pick the most relevant macro groups from the approved list.
+Each entity should get 1-3 groups. Empty array only if absolutely nothing fits.
+
+Return a JSON array:
+[{ "entity_key": "the_key", "macro_group_keys": ["group1", "group2"] }]
+
+ENTITIES:
+${entityList}
+
+APPROVED MACRO GROUPS:
+${groupList}
+
+Return JSON array only. One entry per entity.`;
+
+    try {
+      const model = genAI.getGenerativeModel({
+        model: MODEL_NAME,
+        systemInstruction: systemPrompt,
+        generationConfig: { responseMimeType: "application/json" },
+      });
+
+      const result = await model.generateContent("Assign macro groups to all entities listed.");
+      const parsed = JSON.parse(result.response.text());
+
+      if (!Array.isArray(parsed)) return [];
+
+      const validGroupKeys = new Set(macroGroups.map(g => g.group_key));
+
+      return parsed
+        .filter(item => item.entity_key && Array.isArray(item.macro_group_keys))
+        .map(item => ({
+          entity_key: String(item.entity_key).toLowerCase().trim(),
+          macro_group_keys: item.macro_group_keys.filter(k => validGroupKeys.has(k)),
+        }));
+    } catch (error) {
+      console.error("assignMacroGroupsBatch error:", error.message);
       return [];
     }
   },
