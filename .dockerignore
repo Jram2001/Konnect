@@ -1,0 +1,12 @@
+node_modules
+.env
+.env.*
+.git
+.gitignore
+*.md
+*.log
+architecture.html
+database-schema-mongodb.html
+implementation-spec.html
+coverage
+.DS_Store
