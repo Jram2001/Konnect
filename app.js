@@ -32,32 +32,32 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.use('/', indexRouter);
-app.use('/users', usersRouter);
-app.use('/api/users', userApiRouter);
-app.use('/api/entities', entityApiRouter);
-app.use('/api/macro-groups', macroGroupApiRouter);
-app.use('/api/digests', digestApiRouter);
-app.get("/signup", signupLimiter ,(req, res) => {
+// app.use('/', indexRouter);
+// app.use('/users', usersRouter);
+// app.use('/api/users', userApiRouter);
+// app.use('/api/entities', entityApiRouter);
+// app.use('/api/macro-groups', macroGroupApiRouter);
+// app.use('/api/digests', digestApiRouter);
+app.get("/signup", signupLimiter, (req, res) => {
   res.sendFile(path.join(__dirname, "public/signup.html"));
 });
-app.get("/trigger-pipeline", async (req, res) => {
-  try {
-    res.json({ message: "Pipeline started" });
-    runPipeline(); 
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// app.get("/trigger-pipeline", async (req, res) => {
+//   try {
+//     res.json({ message: "Pipeline started" });
+//     runPipeline();
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// });
 
 
 // catch 404
-app.use(function(req, res, next) {
+app.use(function (req, res, next) {
   res.status(404).json({ error: "Not found" });
 });
 
 // error handler
-app.use(function(err, req, res, next) {
+app.use(function (err, req, res, next) {
   console.error(err.message);
   res.status(err.status || 500).json({ error: err.message || "Internal server error" });
 });
