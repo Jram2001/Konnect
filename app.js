@@ -14,6 +14,14 @@ const { runPipeline } = require("./src/jobs/dailyPipeline");
 var mongoose = require('mongoose');
 const connectDB = require("./src/config/db");
 const rateLimit = require("express-rate-limit");
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Slow down." },
+});
+
 var app = express();
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
@@ -22,7 +30,7 @@ const signupLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many signup attempts. Try again in an hour." },
 });
-mongoose.connect(process?.env?.MONGODB_URI);
+// mongoose.connect(process?.env?.MONGODB_URI);
 connectDB().then(() => {
   console.log("App is ready to run!");
 });
@@ -32,12 +40,12 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// app.use('/', indexRouter);
-// app.use('/users', usersRouter);
-// app.use('/api/users', userApiRouter);
-// app.use('/api/entities', entityApiRouter);
-// app.use('/api/macro-groups', macroGroupApiRouter);
-// app.use('/api/digests', digestApiRouter);
+app.use('/', globalLimiter, indexRouter);
+app.use('/users', usersRouter);
+app.use('/api/users', userApiRouter);
+app.use('/api/entities', entityApiRouter);
+app.use('/api/macro-groups', macroGroupApiRouter);
+app.use('/api/digests', digestApiRouter);
 app.get("/signup", signupLimiter, (req, res) => {
   res.sendFile(path.join(__dirname, "public/signup.html"));
 });
