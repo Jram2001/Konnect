@@ -3,7 +3,6 @@ const Fuse = require("fuse.js");
 const Entity = require("../models/entity.model");
 
 // Initialize Gemini Client
-// Make sure GEMINI_API_KEY is in your environment variables
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const EXTRACTION_SYSTEM_PROMPT = `Extract entities and events from news articles. Return a JSON array.
@@ -29,6 +28,28 @@ Return JSON only.`;
 
 const BATCH_SIZE = 10;
 const MODEL_NAME = "gemini-3.1-flash-lite-preview";
+
+/**
+ * Retry a function with exponential backoff.
+ * @param {Function} fn - async function to retry
+ * @param {number} maxRetries - max attempts (default 3)
+ * @param {number} baseDelay - starting delay in ms (default 10000 = 10s)
+ * @returns {Promise<any>}
+ */
+async function retryWithBackoff(fn, maxRetries = 3, baseDelay = 10000) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === maxRetries) throw error;
+
+      const delay = baseDelay * Math.pow(2, attempt - 1); // 10s, 20s, 40s
+      console.warn(`Retry ${attempt}/${maxRetries} after ${delay / 1000}s — ${error.message}`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
 const aiService = {
   /**
    * Format multiple articles into a single prompt.
@@ -48,7 +69,6 @@ const aiService = {
   parseAIResponse(text) {
     let parsed;
     try {
-      // Gemini's JSON mode returns a raw string without markdown blocks
       parsed = JSON.parse(text);
     } catch (err) {
       console.error("AI parse error:", err.message);
@@ -106,7 +126,6 @@ const aiService = {
 
     const results = new Array(articles.length).fill(null).map(() => []);
 
-    // Initialize the model with system instructions and JSON mode
     const model = genAI.getGenerativeModel({
       model: MODEL_NAME,
       systemInstruction: EXTRACTION_SYSTEM_PROMPT,
@@ -121,8 +140,11 @@ const aiService = {
 
       try {
         const userMessage = this.buildBatchPrompt(batch);
-        const result = await model.generateContent(userMessage);
-        const responseText = result.response.text();
+
+        const responseText = await retryWithBackoff(async () => {
+          const result = await model.generateContent(userMessage);
+          return result.response.text();
+        });
 
         const extractions = this.parseAIResponse(responseText);
 
@@ -173,8 +195,10 @@ const aiService = {
         },
       });
 
-      const result = await model.generateContent(eventLines);
-      const parsed = JSON.parse(result.response.text());
+      const parsed = await retryWithBackoff(async () => {
+        const result = await model.generateContent(eventLines);
+        return JSON.parse(result.response.text());
+      });
 
       return {
         subject_line: String(parsed.subject_line || "Your daily digest").slice(0, 80),
@@ -190,38 +214,31 @@ const aiService = {
   },
 
   /**
-     * Single Gemini call: normalize free text watchlist + assign macro groups.
-     * Fuzzy-matches terms against existing entities first; sends candidates to
-     * Gemini so it can reuse them instead of always creating new keys.
-     *
-     * @param {string} freeText - user input like "Reliance, gold, Chinese telecom"
-     * @param {Array<{group_key: string, display_name: string}>} macroGroups
-     * @returns {Promise<Array<{entity_key: string, display_name: string, macro_group_keys: string[]}>>}
-     */
+   * Single Gemini call: normalize free text watchlist + assign macro groups.
+   * Fuzzy-matches terms against existing entities first; sends candidates to
+   * Gemini so it can reuse them instead of always creating new keys.
+   */
   async normalizeAndAssignWatchlist(freeText, macroGroups) {
     if (!freeText || !freeText.trim()) return [];
 
-    // ── Step 1: fetch existing entities (key + name only) ──────────────────
     const existingEntities = await Entity.find(
       {},
       { entity_key: 1, display_name: 1, _id: 0 }
     ).lean();
 
-    // ── Step 2: split free text into individual terms ───────────────────────
     const terms = freeText
       .split(/[,\n]+/)
       .map(t => t.trim())
       .filter(Boolean);
 
-    // ── Step 3: fuzzy match each term against existing entities ─────────────
-    const candidateMap = {}; // term → [{entity_key, display_name, score}]
+    const candidateMap = {};
     const freshTerms = [];
 
     if (existingEntities.length > 0) {
       const fuse = new Fuse(existingEntities, {
         keys: ["display_name"],
         includeScore: true,
-        threshold: 0.5, // only returns items with score ≤ 0.5
+        threshold: 0.5,
       });
 
       for (const term of terms) {
@@ -229,7 +246,7 @@ const aiService = {
         const candidates = hits.map(h => ({
           entity_key: h.item.entity_key,
           display_name: h.item.display_name,
-          score: Math.round((1 - h.score) * 100), // convert to % match
+          score: Math.round((1 - h.score) * 100),
         }));
 
         if (candidates.length > 0) {
@@ -239,11 +256,9 @@ const aiService = {
         }
       }
     } else {
-      // No existing entities — all terms are fresh
       freshTerms.push(...terms);
     }
 
-    // ── Step 4: build the dynamic Gemini prompt ─────────────────────────────
     const groupList = macroGroups
       .map(g => `${g.group_key} — ${g.display_name}`)
       .join("\n");
@@ -295,7 +310,6 @@ ${groupList}
 
 Return JSON array only. Max 5 entities.`;
 
-    // ── Step 5: single Gemini call ──────────────────────────────────────────
     try {
       const model = genAI.getGenerativeModel({
         model: MODEL_NAME,
@@ -303,8 +317,10 @@ Return JSON array only. Max 5 entities.`;
         generationConfig: { responseMimeType: "application/json" },
       });
 
-      const result = await model.generateContent(freeText.trim());
-      const parsed = JSON.parse(result.response.text());
+      const parsed = await retryWithBackoff(async () => {
+        const result = await model.generateContent(freeText.trim());
+        return JSON.parse(result.response.text());
+      });
 
       if (!Array.isArray(parsed)) return [];
 
@@ -327,21 +343,12 @@ Return JSON array only. Max 5 entities.`;
     }
   },
 
-
   /**
-     * Resolve extracted entities against existing ones using fuzzy + Gemini.
-     * For each extraction, fuzzy match against existing entities.
-     * If candidates found (>50%), ask Gemini to pick the best match or confirm it's new.
-     * If no candidates, keep the original key.
-     *
-     * @param {Array<Object>} extractions - flat array of parsed extractions
-     * @param {Fuse} fuseIndex - pre-built fuse instance from existing entities
-     * @returns {Promise<Array<Object>>} extractions with resolved entity_keys
-     */
+   * Resolve extracted entities against existing ones using fuzzy + Gemini.
+   */
   async resolveExtractedEntities(extractions, fuseIndex) {
     if (!fuseIndex || !extractions || extractions.length === 0) return extractions;
 
-    // Group extractions by entity_key to avoid resolving the same key multiple times
     const uniqueKeys = {};
     for (const ext of extractions) {
       if (!uniqueKeys[ext.entity_key]) {
@@ -349,9 +356,8 @@ Return JSON array only. Max 5 entities.`;
       }
     }
 
-    // Fuzzy match each unique key
-    const toResolve = []; // {original_key, display_name, candidates[]}
-    const alreadyResolved = {}; // original_key → resolved {entity_key, display_name}
+    const toResolve = [];
+    const alreadyResolved = {};
 
     for (const [key, displayName] of Object.entries(uniqueKeys)) {
       const hits = fuseIndex.search(displayName).slice(0, 5);
@@ -363,7 +369,6 @@ Return JSON array only. Max 5 entities.`;
           score: Math.round((1 - h.score) * 100),
         }));
 
-      // Exact key match — no need to resolve
       if (candidates.some(c => c.entity_key === key)) {
         alreadyResolved[key] = { entity_key: key, display_name: displayName };
       } else if (candidates.length > 0) {
@@ -373,10 +378,8 @@ Return JSON array only. Max 5 entities.`;
       }
     }
 
-    // If nothing needs resolving, return as-is
     if (toResolve.length === 0) return extractions;
 
-    // Build Gemini prompt for batch resolution
     const resolveBlock = toResolve
       .map(r => {
         const candidateLines = r.candidates
@@ -402,8 +405,10 @@ Return JSON array only.`;
         generationConfig: { responseMimeType: "application/json" },
       });
 
-      const result = await model.generateContent(resolveBlock);
-      const parsed = JSON.parse(result.response.text());
+      const parsed = await retryWithBackoff(async () => {
+        const result = await model.generateContent(resolveBlock);
+        return JSON.parse(result.response.text());
+      });
 
       if (Array.isArray(parsed)) {
         for (const r of parsed) {
@@ -417,10 +422,8 @@ Return JSON array only.`;
       }
     } catch (error) {
       console.error("resolveExtractedEntities error:", error.message);
-      // On failure, keep original keys — don't block the pipeline
     }
 
-    // Fill in any unresolved keys (Gemini might have missed some)
     for (const r of toResolve) {
       if (!alreadyResolved[r.original_key]) {
         alreadyResolved[r.original_key] = {
@@ -430,7 +433,6 @@ Return JSON array only.`;
       }
     }
 
-    // Apply resolutions to all extractions
     return extractions.map(ext => {
       const resolved = alreadyResolved[ext.entity_key];
       if (resolved) {
@@ -440,16 +442,10 @@ Return JSON array only.`;
     });
   },
 
-
-
   /**
-     * Assign macro groups to entities that don't have any.
-     * Single Gemini call: send all unassigned entities + full macro group list.
-     *
-     * @param {Array<{entity_key: string, display_name: string}>} entities - entities without macro groups
-     * @param {Array<{group_key: string, display_name: string, description: string}>} macroGroups - all 30 groups
-     * @returns {Promise<Array<{entity_key: string, macro_group_keys: string[]}>>}
-     */
+   * Assign macro groups to entities that don't have any.
+   * Single Gemini call per batch of 50 entities.
+   */
   async assignMacroGroupsBatch(entities, macroGroups) {
     if (!entities || entities.length === 0) return [];
 
@@ -484,8 +480,10 @@ Return JSON array only. One entry per entity.`;
         generationConfig: { responseMimeType: "application/json" },
       });
 
-      const result = await model.generateContent("Assign macro groups to all entities listed.");
-      const parsed = JSON.parse(result.response.text());
+      const parsed = await retryWithBackoff(async () => {
+        const result = await model.generateContent("Assign macro groups to all entities listed.");
+        return JSON.parse(result.response.text());
+      });
 
       if (!Array.isArray(parsed)) return [];
 

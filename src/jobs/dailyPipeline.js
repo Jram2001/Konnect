@@ -235,7 +235,11 @@ async function runPipeline() {
 function schedulePipeline() {
   cron.schedule("0 6 * * *", () => {
     runPipeline();
-  });
+  },
+    {
+      timezone: "Asia/Kolkata",
+    }
+  );
 
   console.log("[Pipeline] Cron scheduled — daily at 06:00 AM");
 }
