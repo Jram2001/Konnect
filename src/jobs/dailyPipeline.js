@@ -16,7 +16,7 @@ async function step1_ingest() {
 
   let totalStored = 0;
   let nextPage = null;
-  const ARTICLE_LIMIT = 100;
+  const ARTICLE_LIMIT = 250;
 
   do {
     const { articles, nextPage: next } = await newsService.fetchTodaysNews({
